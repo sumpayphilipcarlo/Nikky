@@ -1,4 +1,5 @@
 const assert=require("assert");
+const {loadConfig}=require("../server/config.js");
 process.env.NIKKY_SERVICE_TOKEN="test-token";
 process.env.NIKKY_MEMORY_KEY="test-memory-key";
 const {createRuntime,createActionExecutor}=require("../server/runtime.js");
@@ -99,6 +100,20 @@ const Orchestrator=require("../orchestrator.js");
  assert.equal(res.status,200);
  body=await res.json();
  assert.equal(body.result.status,"approval_required");
+
+ assert.equal(loadConfig({NODE_ENV:"production",PORT:"3000"}).valid,false);
+ const validCfg=loadConfig({NODE_ENV:"production",PORT:"3000",NIKKY_SERVICE_TOKEN:"x".repeat(32),NIKKY_MEMORY_KEY:"y".repeat(32),DATABASE_URL:"postgres://example"});
+ assert.equal(validCfg.valid,true);
+
+ res=await fetch(base+"/health");
+ assert.equal(res.headers.get("x-content-type-options"),"nosniff");
+ assert.equal(res.headers.get("x-frame-options"),"DENY");
+ assert.ok(res.headers.get("x-request-id"));
+
+ runtime.policyStore.add({id:"auto-note",actionType:"note.create",effect:"allow"});
+ const scopedResult=await runtime.propose({type:"note.create",payload:{body:"hello"}});
+ assert.equal(scopedResult.result.verdict.level,"auto");
+ assert.equal(runtime.auditLedger.verify().ok,true);
 
  await new Promise(resolve=>server.close(resolve));
  console.log("Nikky backend tests passed");

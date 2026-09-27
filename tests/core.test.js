@@ -1,4 +1,11 @@
 const assert=require("assert");
+const {createAuditLedger}=require("../core/audit-ledger.js");
+const {createPolicyEngine}=require("../core/policy.js");
+const {createProviderHealth}=require("../core/provider-health.js");
+const {createPermissionEnforcer}=require("../core/permissions.js");
+const {createJsonStore}=require("../server/persistence.js");
+const fs=require("fs"),os=require("os"),path=require("path");
+
 const {createDataControls}=require("../core/data-controls.js");
 const ProductMetrics=require("../core/product-metrics.js");
 
@@ -37,7 +44,6 @@ const WhatsApp=require("../providers/whatsapp.js");
 const Policy=require("../core/policy.js");
 const Approval=require("../core/approval.js");
 const {createSkillSandbox}=require("../core/sandbox.js");
-const {createProviderHealth}=require("../core/provider-health.js");
 const {createAuditChain}=require("../core/audit-chain.js");
 const Secrets=require("../core/secrets.js");
 
@@ -639,6 +645,39 @@ const GoogleCalendar=require("../google-calendar.js");
   }});
   assert.equal(pm.suggestionAcceptanceRate,.7);
   assert.equal(pm.actionReliability,.9);
+
+  const ledger=createAuditLedger();
+  ledger.append({actor:"nikky",actionType:"email.send",decision:"approval",metadata:{recipient:"a@example.com",nested:{x:1}}});
+  assert.equal(ledger.verify().ok,true);
+  ledger.entries[0].metadata.nested.x=2;
+  assert.equal(ledger.verify().ok,false);
+
+  const scoped=createPolicyEngine();
+  scoped.add({id:"spouse-delay",actionType:"sms.send",effect:"allow",priority:10,recipient:"+15550001"});
+  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550001"}},{}).effect,"allow");
+  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550002"}},{}).ruleId,null);
+
+  const healthMonitor=createProviderHealth({now:()=>1000,failureThreshold:3});
+  assert.equal(healthMonitor.success("gmail").status,"healthy");
+  assert.equal(healthMonitor.failure("gmail",new Error("timeout")).status,"degraded");
+  healthMonitor.failure("gmail",new Error("timeout"));
+  assert.equal(healthMonitor.failure("gmail",new Error("timeout")).status,"open");
+  assert.equal(healthMonitor.canCall("gmail"),false);
+
+  const registry=createSkillRegistry([{id:"gmail",name:"Gmail",permissions:["email.read"]}]);
+  const enforcer=createPermissionEnforcer({registry});
+  assert.equal(enforcer.requirePermission("gmail","email.read").ok,true);
+  assert.equal(enforcer.requirePermission("gmail","email.send").ok,false);
+
+  const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),"nikky-store-"));
+  const storePath=path.join(tempDir,"state.json");
+  const store=createJsonStore({filePath:storePath});
+  store.put("workflows","w1",{id:"w1",state:"planned"});
+  const reloaded=createJsonStore({filePath:storePath});
+  assert.equal(reloaded.get("workflows","w1").state,"planned");
+  const tampered=JSON.parse(fs.readFileSync(storePath,"utf8"));tampered.payload.data.workflows.w1.state="tampered";fs.writeFileSync(storePath,JSON.stringify(tampered));
+  assert.throws(()=>createJsonStore({filePath:storePath}),/checksum mismatch/);
+  fs.rmSync(tempDir,{recursive:true,force:true});
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
