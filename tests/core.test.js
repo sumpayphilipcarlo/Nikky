@@ -1,4 +1,11 @@
 const assert=require("assert");
+const {createTaskManager}=require("../core/tasks.js");
+const Brief=require("../core/brief.js");
+const Explain=require("../core/explain.js");
+const {createCorrectionEngine}=require("../core/corrections.js");
+const {createOnboarding}=require("../core/onboarding.js");
+const Demo=require("../demo/scenarios.js");
+
 const {createMemoryRepository}=require("../storage/memory.js");
 const {createPostgresRepository}=require("../storage/postgres.js");
 const {createWorker}=require("../server/worker.js");
@@ -571,6 +578,45 @@ const GoogleCalendar=require("../google-calendar.js");
   });
   assert.equal((await fcm.send({deviceToken:"dev",title:"Nikky",body:"Leave now"})).live,true);
   assert.equal((await Push.createFcmAdapter({}).send({deviceToken:"x"})).ok,false);
+
+  const taskMgr=createTaskManager();
+  taskMgr.fromCommitment({id:"c1",task:"Send report",status:"open",dueAt:"2026-09-27T08:00:00Z"});
+  assert.equal(taskMgr.open()[0].source,"commitment");
+  assert.equal(taskMgr.due(new Date("2026-09-27T09:00:00Z")).length,1);
+
+  const mb=Brief.morningBrief({
+    events:[{title:"Meeting",start:"2026-09-27T09:00:00Z"}],
+    tasks:taskMgr.list(),
+    weather:{condition:"rain"},
+    predictions:[{status:"candidate",confidence:.9,title:"Leave soon"}]
+  });
+  assert.equal(mb.type,"morning");
+  assert.ok(mb.headline.includes("Meeting"));
+  const eb=Brief.eveningBrief({completedTasks:[],openTasks:taskMgr.open(),commitments:[{status:"open",task:"Send report"}],tomorrowEvents:[]});
+  assert.equal(eb.unresolved.length,1);
+
+  const explanation=Explain.explain({
+    prediction:{title:"Leave soon",confidence:.91,evidence:[{label:"calendar"},{label:"traffic"}]},
+    action:{title:"Departure alert",summary:"Leave now",provenance:{source:"departure-service"}},
+    authorityDecision:{level:"auto"},
+    workflow:{state:"completed"}
+  });
+  assert.ok(explanation.why.some(x=>x.includes("91")));
+  assert.equal(explanation.source,"departure-service");
+
+  const fb2=createFeedbackModel(),mem2=Memory.createMemoryStore();
+  const corrections=createCorrectionEngine({feedbackModel:fb2,memory:mem2});
+  corrections.correct({predictionKey:"departure",field:"leaveAt",from:"07:30",to:"07:15"});
+  assert.equal(corrections.list().length,1);
+  assert.ok(fb2.trust("departure")>0);
+
+  const onboarding=createOnboarding();
+  onboarding.complete("identity",{name:"User"});
+  onboarding.complete("routine",{arrival:"09:00"});
+  onboarding.complete("authority",{mode:"balanced"});
+  onboarding.complete("privacy",{memory:true});
+  assert.equal(onboarding.progress().requiredComplete,true);
+  assert.equal(Demo.scenarios.length,6);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
