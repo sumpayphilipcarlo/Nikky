@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nikky",
+  "version": "0.1.0",
+  "identifier": "com.nikky.assistant.desktop",
+  "build": {
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [{
+      "title": "Nikky",
+      "width": 1180,
+      "height": 800,
+      "resizable": true
+    }],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' https:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}
