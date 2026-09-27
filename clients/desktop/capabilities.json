@@ -1,0 +1,19 @@
+{
+  "platforms": [
+    "windows",
+    "macos",
+    "linux"
+  ],
+  "target": "Tauri native shell",
+  "capabilities": [
+    "notifications",
+    "background-jobs",
+    "wake-word",
+    "speech-input",
+    "active-window",
+    "files",
+    "push"
+  ],
+  "status": "scaffold",
+  "notes": "Requires Tauri project, OS permissions, secure keychain integration, signing/notarization, and per-OS packaging."
+}
