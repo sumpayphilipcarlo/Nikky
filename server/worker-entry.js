@@ -3,13 +3,17 @@ const {createWorker}=require("./worker.js");
 const {createPostgresPool}=require("../storage/db.js");
 const {createPostgresRepository}=require("../storage/postgres.js");
 const {createRuntime}=require("./runtime.js");
+const {buildStoredProviders}=require("./provider-bootstrap.js");
 
 async function startWorker(){
  const {config}=assertValidConfig(process.env);
  if(!config.databaseUrl)throw new Error("DATABASE_URL is required for worker");
  const pool=createPostgresPool({connectionString:config.databaseUrl,ssl:String(process.env.DATABASE_SSL||"false")==="true"});
  const repository=createPostgresRepository(pool);
- const runtime=createRuntime({workflowRepository:repository,userId:process.env.NIKKY_DEFAULT_USER_ID||"default-user"});
+ const userId=process.env.NIKKY_DEFAULT_USER_ID||"default-user";
+ await repository.upsertUser({id:userId});
+ const providers=await buildStoredProviders({repository,userId,keyMaterial:config.memoryKey});
+ const runtime=createRuntime({workflowRepository:repository,userId,providers});
  const handlers={
   "runtime.scheduler.tick":async()=>runtime.scheduler.tick(),
   "provider.health":async job=>({provider:job.payload?.provider||"unknown",status:"scheduled-check"})
