@@ -4,6 +4,7 @@ global.NikkyAuthority=Authority;
 const Orchestrator=require("../orchestrator.js");
 const Context=require("../context.js");
 const Proactive=require("../proactive.js");
+const Journey=require("../journey.js");
 
 (async()=>{
   assert.equal(Authority.evaluate({type:"weather.read"}).level,Authority.LEVELS.AUTO);
@@ -49,6 +50,20 @@ const Proactive=require("../proactive.js");
   assert.ok(suggestions.some(x=>x.kind==="departure"));
 
   assert.equal(Authority.evaluate({type:"proactive.notify"}).level,Authority.LEVELS.AUTO);
+
+  const journey=Journey.plan({
+    event:{id:"m1",title:"Client meeting",time:"09:00",contact:"client"},
+    routine:{prep:45,commute:60,buffer:15},
+    learned:{typicalPrepMinutes:50,typicalCommuteMinutes:70},
+    trafficMinutes:80,
+    now:new Date("2026-09-27T08:10:00")
+  });
+  assert.equal(journey.ok,true);
+  assert.equal(journey.leaveAt,"07:25");
+  assert.equal(journey.prepareAt,"06:35");
+  assert.equal(journey.status,"late-risk");
+  assert.ok(journey.communicationAction);
+  assert.equal(journey.communicationAction.type,"sms.send");
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
