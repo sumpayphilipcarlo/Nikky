@@ -32,6 +32,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <button class="nav" data-view="approvals">Approvals <span id="ab" class="badge">0</span></button>
     <button class="nav" data-view="audit">Audit Trail</button>
     <button class="nav" data-view="learning">Learning</button>
+    <button class="nav" data-view="journey">Journey</button>
   </nav>
 </aside>
 <main>
@@ -134,12 +135,31 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     </article>
   </div>
 </section>
+<section id="view-journey" class="view">
+  <div class="top"><div><div class="eyebrow">CROSS-APP ORCHESTRATION</div><h1>Event → departure → communication</h1><p class="muted">Prototype workflow combining calendar-style event context with learned preparation and commute behavior. Live Calendar, Maps, and SMS providers are not connected yet.</p></div></div>
+  <div class="grid">
+    <article class="card">
+      <h3>Event context</h3>
+      <label>Event title</label><input id="journeyTitle" placeholder="Client meeting"/>
+      <label>Event time</label><input type="time" id="journeyTime" value="09:00"/>
+      <label>Destination</label><input id="journeyDestination" placeholder="Office / meeting venue"/>
+      <label>Contact</label><input id="journeyContact" placeholder="Meeting contact"/>
+      <label>Traffic estimate (minutes)</label><input type="number" id="journeyTraffic" placeholder="Leave blank to use learned/baseline commute"/>
+      <button class="primary" id="planJourney" style="margin-top:12px;width:100%">Build journey plan</button>
+    </article>
+    <article class="card">
+      <h3>Nikky's orchestration plan</h3>
+      <div id="journeyPlan" class="list"><div class="muted">No journey planned yet.</div></div>
+    </article>
+  </div>
+</section>
 </main>
 </div>
 <script src="authority.js"></script>
 <script src="orchestrator.js"></script>
 <script src="context.js"></script>
 <script src="proactive.js"></script>
+<script src="journey.js"></script>
 <script>
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
@@ -213,6 +233,36 @@ function addLearningObservation(){
 }
 
 
+
+function renderJourney(result){
+  if(!result||!result.ok){q("journeyPlan").innerHTML='<div class="muted">Unable to build journey plan.</div>';return}
+  const steps=result.steps.map(x=>`<div class="item"><strong>${esc(x.at)} · ${esc(x.label)}</strong></div>`).join("");
+  const risk=result.status==="late-risk"?`<div class="item"><strong>Late-risk detected</strong><p class="muted small">Estimated ${result.lateByMinutes} minutes past planned departure.</p></div>`:"";
+  const comm=result.communicationAction?`<div class="item"><strong>Communication action prepared</strong><p class="muted small">${esc(result.communicationAction.summary)}</p><button class="secondary" id="queueDelayNotice">Send to Approval Center</button></div>`:"";
+  q("journeyPlan").innerHTML=risk+steps+comm;
+  const btn=q("queueDelayNotice");
+  if(btn) btn.onclick=async()=>{await proposeAction(result.communicationAction);renderJourney({...result,communicationAction:null})};
+}
+function buildJourney(){
+  const trafficRaw=q("journeyTraffic").value.trim();
+  const traffic=trafficRaw===""?null:Number(trafficRaw);
+  const event={
+    id:"manual-"+Date.now(),
+    title:q("journeyTitle").value.trim()||"Event",
+    time:q("journeyTime").value,
+    destination:q("journeyDestination").value.trim(),
+    contact:q("journeyContact").value.trim()||"event contact"
+  };
+  const result=NikkyJourney.plan({
+    event,
+    routine:state.routine,
+    learned:contextEngine.state.learned,
+    trafficMinutes:Number.isFinite(traffic)?traffic:null,
+    now:new Date()
+  });
+  renderJourney(result);
+}
+
 function runProactiveScan(){
   contextEngine.infer();
   state.suggestions=NikkyProactive.detect({
@@ -241,6 +291,7 @@ function renderProactive(){
 function buildAudit(){let checks=[["Nikky Core reasoning backend",false],["Calendar live integration",state.skills.find(s=>s.id==="calendar")?.live],["Gmail live integration",state.skills.find(s=>s.id==="gmail")?.live],["Cloud memory",false],["Maps & live traffic",state.skills.find(s=>s.id==="maps")?.live],["Spotify control",state.skills.find(s=>s.id==="spotify")?.live],["SMS",state.skills.find(s=>s.id==="sms")?.live],["Calls",state.skills.find(s=>s.id==="calls")?.live]];let top=checks.find(x=>!x[1]);q("buildAudit").innerHTML=`<div class="item"><strong>${top?top[0]:"No pending gaps"}</strong><div class="muted small">30-minute in-app audit while Nikky is open</div></div>`}
 async function weather(){if(!navigator.geolocation){q("weather").textContent="Location unavailable.";return}q("weather").textContent="Checking…";navigator.geolocation.getCurrentPosition(async p=>{try{let u=`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&current=temperature_2m,rain,precipitation&timezone=auto`;let j=await (await fetch(u)).json();let rain=j.current?.rain??j.current?.precipitation??0;q("weather").textContent=`${Math.round(j.current.temperature_2m)}°C · ${rain>0?"Rain detected — bring an umbrella.":"No current rain detected."}`}catch{q("weather").textContent="Weather check failed."}},()=>q("weather").textContent="Location permission not granted.")}
 q("weatherBtn").onclick=weather;
+q("planJourney").onclick=buildJourney;
 q("addObservation").onclick=addLearningObservation;
 q("runInference").onclick=()=>{contextEngine.infer();persist();renderLearning()};
 q("resetLearning").onclick=()=>{contextEngine.reset();persist();renderLearning()};
