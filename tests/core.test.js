@@ -38,7 +38,7 @@ const Proactive=require("../proactive.js");
   assert.equal(learned.typicalPrepMinutes,45);
   assert.equal(learned.typicalCommuteMinutes,60);
 
-  const now=new Date("2026-09-27T06:20:00");
+  const now=new Date("2026-09-27T07:35:00");
   const suggestions=Proactive.detect({
     now,
     routine:{arrival:"09:00",prep:45,commute:60,buffer:15},
