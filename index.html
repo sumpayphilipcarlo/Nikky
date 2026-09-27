@@ -42,6 +42,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <article class="card"><div class="eyebrow">WEATHER</div><h3>Before you leave</h3><div id="weather">Enable location to check weather.</div><button class="secondary" id="weatherBtn">Check weather</button></article>
     <article class="card"><div class="eyebrow">COMMUTE</div><h3>Departure intelligence</h3><div id="commute">No routine yet.</div></article>
     <article class="card"><div class="eyebrow">LIFE EVENTS</div><h3>Prepare early</h3><div id="eventPreview" class="list"></div></article>
+    <article class="card"><div class="eyebrow">NIKKY NOTICED</div><h3>Proactive suggestions</h3><div id="proactiveList" class="list"></div></article>
     <article class="card"><div class="eyebrow">BUILD AUDIT</div><h3>Next engineering target</h3><div id="buildAudit" class="list"></div></article>
   </div>
 </section>
@@ -138,11 +139,12 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 <script src="authority.js"></script>
 <script src="orchestrator.js"></script>
 <script src="context.js"></script>
+<script src="proactive.js"></script>
 <script>
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),context:load("nikky.context",{observations:[],learned:{},lastInference:null}),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),context:load("nikky.context",{observations:[],learned:{},lastInference:null}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -154,17 +156,22 @@ const state={
   {id:"notes",name:"Notes",icon:"📝",enabled:true,live:true}
  ])
 };let selectedNote=null;
-function persist(){save("nikky.routine",state.routine);save("nikky.events",state.events);save("nikky.notes",state.notes);save("nikky.approvals",state.approvals);save("nikky.audit",state.audit);state.context=contextEngine.snapshot();save("nikky.context",state.context);save("nikky.skills",state.skills)}
-const orchestrator=NikkyOrchestrator.create({approvalQueue:state.approvals,auditLog:state.audit,executor:async(action)=>({ok:false,reason:"No live provider executor configured for "+action.type})});
+function persist(){save("nikky.routine",state.routine);save("nikky.events",state.events);save("nikky.notes",state.notes);save("nikky.approvals",state.approvals);save("nikky.audit",state.audit);save("nikky.suggestions",state.suggestions);state.context=contextEngine.snapshot();save("nikky.context",state.context);save("nikky.skills",state.skills)}
+const orchestrator=NikkyOrchestrator.create({approvalQueue:state.approvals,auditLog:state.audit,executor:async(action)=>{
+  if(action.type==="proactive.notify"){
+    return {ok:true,local:true};
+  }
+  return {ok:false,reason:"No live provider executor configured for "+action.type};
+}});
 const contextEngine=NikkyContext.create(state.context);
 function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>{document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));q("view-"+b.dataset.view).classList.add("active")});
 function mins(s){let[a,b]=s.split(":").map(Number);return a*60+b}function hm(n){n=(n+1440)%1440;return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
 function renderRoutine(){let r=state.routine,arr=mins(r.arrival),leave=arr-r.commute-r.buffer,wake=leave-r.prep;q("plan").innerHTML=`<div class="item"><strong>${hm(wake)}</strong><div class="muted small">Wake / prepare</div></div><div class="item"><strong>${hm(leave)}</strong><div class="muted small">Recommended departure</div></div><div class="item"><strong>${r.arrival}</strong><div class="muted small">Arrive at ${esc(r.workLocation)}</div></div>`;q("nextThing").textContent=`Leave by ${hm(leave)}`;q("nextDetail").textContent=`Wake around ${hm(wake)} to arrive by ${r.arrival}.`;q("commute").textContent=`Baseline commute: ${r.commute} min. Live traffic still needs a provider.`}
-q("saveRoutine").onclick=()=>{state.routine={arrival:q("arrival").value,prep:+q("prep").value||0,commute:+q("commuteMins").value||0,buffer:+q("buffer").value||0,workLocation:q("workLocation").value||"Office"};persist();renderRoutine()}
+q("saveRoutine").onclick=()=>{state.routine={arrival:q("arrival").value,prep:+q("prep").value||0,commute:+q("commuteMins").value||0,buffer:+q("buffer").value||0,workLocation:q("workLocation").value||"Office"};persist();renderRoutine();runProactiveScan()}
 function loadRoutine(){let r=state.routine;q("arrival").value=r.arrival;q("prep").value=r.prep;q("commuteMins").value=r.commute;q("buffer").value=r.buffer;q("workLocation").value=r.workLocation}
 function daysUntil(d){let a=new Date(d+"T00:00:00"),b=new Date();b.setHours(0,0,0,0);return Math.ceil((a-b)/86400000)}
-function renderEvents(){state.events.sort((a,b)=>a.date.localeCompare(b.date));q("eventsList").innerHTML=state.events.length?state.events.map(e=>`<div class="item"><strong>${esc(e.title)}</strong><div class="muted small">${esc(e.type)} · ${daysUntil(e.date)===0?"Today":daysUntil(e.date)+" days away"}</div><button class="danger" data-de="${e.id}">Delete</button></div>`).join(""):'<div class="muted">No events yet.</div>';q("eventPreview").innerHTML=state.events.filter(e=>daysUntil(e.date)>=0).slice(0,4).map(e=>`<div class="item"><strong>${esc(e.title)}</strong><div class="muted small">${daysUntil(e.date)} days away</div></div>`).join("")||'<div class="muted">No upcoming events.</div>';document.querySelectorAll("[data-de]").forEach(b=>b.onclick=()=>{state.events=state.events.filter(e=>e.id!==b.dataset.de);persist();renderEvents()})}
+function renderEvents(){state.events.sort((a,b)=>a.date.localeCompare(b.date));q("eventsList").innerHTML=state.events.length?state.events.map(e=>`<div class="item"><strong>${esc(e.title)}</strong><div class="muted small">${esc(e.type)} · ${daysUntil(e.date)===0?"Today":daysUntil(e.date)+" days away"}</div><button class="danger" data-de="${e.id}">Delete</button></div>`).join(""):'<div class="muted">No events yet.</div>';q("eventPreview").innerHTML=state.events.filter(e=>daysUntil(e.date)>=0).slice(0,4).map(e=>`<div class="item"><strong>${esc(e.title)}</strong><div class="muted small">${daysUntil(e.date)} days away</div></div>`).join("")||'<div class="muted">No upcoming events.</div>';document.querySelectorAll("[data-de]").forEach(b=>b.onclick=()=>{state.events=state.events.filter(e=>e.id!==b.dataset.de);persist();renderEvents();runProactiveScan()})}
 q("saveEvent").onclick=()=>{let title=q("eventTitle").value.trim(),date=q("eventDate").value;if(!title||!date)return;state.events.push({id:String(Date.now()),title,type:q("eventType").value,date,notes:q("eventNotes").value});persist();renderEvents()}
 function renderSkills(){q("skillsGrid").innerHTML=state.skills.map(s=>`<article class="skill"><div style="font-size:24px">${s.icon}</div><strong>${s.name}</strong><p class="muted small">${s.live?"Prototype live":"Provider connection required"}</p><button class="secondary" data-sk="${s.id}">${s.enabled?"Enabled":"Disabled"}</button></article>`).join("");document.querySelectorAll("[data-sk]").forEach(b=>b.onclick=()=>{let s=state.skills.find(x=>x.id===b.dataset.sk);s.enabled=!s.enabled;persist();renderSkills()})}
 function renderNotes(){q("notesList").innerHTML=state.notes.length?state.notes.map(n=>`<div class="item" data-note="${n.id}"><strong>${esc(n.title||"Untitled")}</strong><div class="muted small">${new Date(n.updated).toLocaleString()}</div></div>`).join(""):'<div class="muted">No notes yet.</div>';document.querySelectorAll("[data-note]").forEach(e=>e.onclick=()=>{selectedNote=e.dataset.note;let n=state.notes.find(x=>x.id===selectedNote);q("noteTitle").value=n.title;q("noteBody").value=n.body})}
@@ -202,7 +209,33 @@ function addLearningObservation(){
     const n=Number(value);if(!Number.isFinite(n)||n<0)return;
     contextEngine.observe(type,{minutes:n},"manual");
   }
-  contextEngine.infer();q("obsValue").value="";persist();renderLearning();
+  contextEngine.infer();q("obsValue").value="";persist();renderLearning();runProactiveScan();
+}
+
+
+function runProactiveScan(){
+  contextEngine.infer();
+  state.suggestions=NikkyProactive.detect({
+    now:new Date(),
+    routine:state.routine,
+    learned:contextEngine.state.learned,
+    events:state.events
+  });
+  persist();
+  renderProactive();
+}
+function renderProactive(){
+  const items=state.suggestions||[];
+  q("proactiveList").innerHTML=items.length?items.map(x=>`<div class="item"><strong>${esc(x.title)}</strong><p class="muted small">${esc(x.summary)}</p><button class="secondary" data-proactive="${esc(x.id)}">Review action</button></div>`).join(""):'<div class="muted">Nothing urgent detected right now.</div>';
+  document.querySelectorAll("[data-proactive]").forEach(b=>b.onclick=async()=>{
+    const item=state.suggestions.find(x=>x.id===b.dataset.proactive);
+    if(!item||!item.action)return;
+    const result=await proposeAction({...item.action,provenance:{source:"proactive-engine",suggestionId:item.id}});
+    if(result.status==="executed"){
+      state.suggestions=state.suggestions.filter(x=>x.id!==item.id);
+      persist();renderProactive();
+    }
+  });
 }
 
 function buildAudit(){let checks=[["Nikky Core reasoning backend",false],["Calendar live integration",state.skills.find(s=>s.id==="calendar")?.live],["Gmail live integration",state.skills.find(s=>s.id==="gmail")?.live],["Cloud memory",false],["Maps & live traffic",state.skills.find(s=>s.id==="maps")?.live],["Spotify control",state.skills.find(s=>s.id==="spotify")?.live],["SMS",state.skills.find(s=>s.id==="sms")?.live],["Calls",state.skills.find(s=>s.id==="calls")?.live]];let top=checks.find(x=>!x[1]);q("buildAudit").innerHTML=`<div class="item"><strong>${top?top[0]:"No pending gaps"}</strong><div class="muted small">30-minute in-app audit while Nikky is open</div></div>`}
@@ -211,10 +244,10 @@ q("weatherBtn").onclick=weather;
 q("addObservation").onclick=addLearningObservation;
 q("runInference").onclick=()=>{contextEngine.infer();persist();renderLearning()};
 q("resetLearning").onclick=()=>{contextEngine.reset();persist();renderLearning()};
-function process(raw){let l=raw.trim().toLowerCase().replace(/^hey nikky[,s]*/,"");q("transcript").textContent=raw;q("result").classList.remove("hidden");if(l.includes("when should i leave")||l.includes("what time")&&l.includes("leave")){let r=state.routine,leave=mins(r.arrival)-r.commute-r.buffer;q("result").innerHTML=`<strong>Leave by ${hm(leave)}.</strong><p>Using your baseline commute and arrival buffer.</p>`;return}if(l.includes("weather")){weather();q("result").innerHTML="<strong>Checking weather now.</strong>";return}if(l.includes("summar")&&l.includes("pdf")&&l.includes("email")){let who=(l.match(/to\s+([a-z][a-z0-9_-]*)/)||[])[1]||"recipient";proposeAction({type:"email.send",title:`Email PDF summary to ${who}`,summary:`Summarize the selected PDF and email the summary to ${who}. Requires live Gmail + AI backend.`,payload:{recipient:who},provenance:{source:"voice-command"}});q("result").innerHTML="<strong>Routed through Authority Engine.</strong><p>Approval is required before external sending.</p>";return}if(l.startsWith("remember ")||l.startsWith("note ")){let body=l.replace(/^(remember|note)\s+/,"");proposeAction({type:"note.create",title:"Voice note",summary:body,payload:{body},provenance:{source:"voice-command"}}).then(()=>{state.notes.unshift({id:String(Date.now()),title:"Voice note",body,updated:Date.now()});persist();renderNotes();renderAudit()});q("result").innerHTML="<strong>Remembered.</strong>";return}q("result").innerHTML="<strong>Nikky Core planner</strong><p>I would decompose this request, check required Skills, execute low-risk local steps, and route sensitive external actions through approval.</p>"}
+function process(raw){let l=raw.trim().toLowerCase().replace(/^hey nikky[,\\s]*/,"");q("transcript").textContent=raw;q("result").classList.remove("hidden");if(l.includes("when should i leave")||l.includes("what time")&&l.includes("leave")){let r=state.routine,leave=mins(r.arrival)-r.commute-r.buffer;q("result").innerHTML=`<strong>Leave by ${hm(leave)}.</strong><p>Using your baseline commute and arrival buffer.</p>`;return}if(l.includes("weather")){weather();q("result").innerHTML="<strong>Checking weather now.</strong>";return}if(l.includes("summar")&&l.includes("pdf")&&l.includes("email")){let who=(l.match(/to\s+([a-z][a-z0-9_-]*)/)||[])[1]||"recipient";proposeAction({type:"email.send",title:`Email PDF summary to ${who}`,summary:`Summarize the selected PDF and email the summary to ${who}. Requires live Gmail + AI backend.`,payload:{recipient:who},provenance:{source:"voice-command"}});q("result").innerHTML="<strong>Routed through Authority Engine.</strong><p>Approval is required before external sending.</p>";return}if(l.startsWith("remember ")||l.startsWith("note ")){let body=l.replace(/^(remember|note)\s+/,"");proposeAction({type:"note.create",title:"Voice note",summary:body,payload:{body},provenance:{source:"voice-command"}}).then(()=>{state.notes.unshift({id:String(Date.now()),title:"Voice note",body,updated:Date.now()});persist();renderNotes();renderAudit()});q("result").innerHTML="<strong>Remembered.</strong>";return}q("result").innerHTML="<strong>Nikky Core planner</strong><p>I would decompose this request, check required Skills, execute low-risk local steps, and route sensitive external actions through approval.</p>"}
 q("run").onclick=()=>{process(q("cmd").value);q("cmd").value=""};q("cmd").addEventListener("keydown",e=>{if(e.key==="Enter")q("run").click()});
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;function startVoice(){document.querySelector('[data-view="voice"]').click();if(!SR){q("result").classList.remove("hidden");q("result").textContent="Speech recognition is not available in this browser.";return}let r=new SR();r.lang="en-US";r.interimResults=true;r.onresult=e=>{let t=[...e.results].map(x=>x[0].transcript).join(" ");q("transcript").textContent=t;if(e.results[e.results.length-1].isFinal)process(t)};r.start()}q("orb").onclick=startVoice;q("micTop").onclick=startVoice;
-function init(){let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();renderLearning();buildAudit();setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
+function init(){let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();renderLearning();runProactiveScan();buildAudit();setInterval(runProactiveScan,5*60*1000);setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
 </script>
 </body>
 </html>
