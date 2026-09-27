@@ -22,6 +22,8 @@
    login:idToken=>request("/auth/session",{method:"POST",body:{idToken}}),
    devLogin:devUserId=>request("/auth/session",{method:"POST",body:{devUserId}}),
    logout:()=>request("/auth/session",{method:"DELETE"}),
+   status:()=>request("/v1/status"),
+   providers:()=>request("/v1/providers"),
    approvals:()=>request("/v1/approvals"),
    audit:()=>request("/v1/audit"),
    workflows:()=>request("/v1/workflows"),
