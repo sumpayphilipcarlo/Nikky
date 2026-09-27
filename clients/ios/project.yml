@@ -1,0 +1,15 @@
+name: Nikky
+options:
+  bundleIdPrefix: com.nikky
+targets:
+  Nikky:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources: [Nikky]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nikky.assistant
+        INFOPLIST_FILE: Nikky/Info.plist
+        SWIFT_VERSION: 5.9
+        NIKKY_BASE_URL: https://app.example.invalid
