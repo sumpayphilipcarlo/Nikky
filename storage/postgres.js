@@ -13,7 +13,7 @@ function createPostgresRepository(pool){
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     ON CONFLICT(id) DO UPDATE SET state=EXCLUDED.state,context=EXCLUDED.context,steps=EXCLUDED.steps,history=EXCLUDED.history,attempt=EXCLUDED.attempt,updated_at=EXCLUDED.updated_at
     RETURNING *`,
-   [w.id,userId,w.type,w.state,w.context||{},w.steps||[],w.history||[],w.attempt||0,w.createdAt||new Date(),w.updatedAt||new Date()]);
+   [w.id,userId,w.type,w.state,JSON.stringify(w.context||{}),JSON.stringify(w.steps||[]),JSON.stringify(w.history||[]),w.attempt||0,w.createdAt||new Date(),w.updatedAt||new Date()]);
   return r.rows[0];
  }
  async function listWorkflows(userId,{state,limit=50}={}){
@@ -29,7 +29,7 @@ function createPostgresRepository(pool){
     VALUES($1,$2,$3,$4,$5,$6,$7,NOW(),NOW())
     ON CONFLICT(id) DO UPDATE SET encrypted_value=EXCLUDED.encrypted_value,source=EXCLUDED.source,sensitivity=EXCLUDED.sensitivity,expires_at=EXCLUDED.expires_at,updated_at=NOW()
     RETURNING *`,
-   [memory.id,userId,memory.type,memory.encryptedValue,memory.source||null,memory.sensitivity||"normal",memory.expiresAt||null]);
+   [memory.id,userId,memory.type,JSON.stringify(memory.encryptedValue),memory.source||null,memory.sensitivity||"normal",memory.expiresAt||null]);
   return r.rows[0];
  }
  async function listDueJobs(at=new Date(),limit=100){
@@ -41,7 +41,7 @@ function createPostgresRepository(pool){
   return r.rows[0];
  }
  async function appendFeedback(userId,{predictionKey,outcome,context}){
-  const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,context||{}]);
+  const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
  return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,appendFeedback,pool};
