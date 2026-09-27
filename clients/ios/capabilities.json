@@ -1,0 +1,16 @@
+{
+  "platform": "ios",
+  "target": "React Native or Capacitor native shell",
+  "capabilities": [
+    "notifications",
+    "background-refresh",
+    "speech-input",
+    "shortcuts",
+    "contacts",
+    "geolocation",
+    "files",
+    "push"
+  ],
+  "status": "scaffold",
+  "notes": "Wake-word/background behavior is constrained by iOS platform policies; requires native project, entitlements, signing, APNs, and App Store distribution."
+}
