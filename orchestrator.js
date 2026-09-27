@@ -4,7 +4,7 @@
  root.NikkyOrchestrator=api;
 })(typeof globalThis!=="undefined"?globalThis:this,function(Authority){
  if(!Authority) throw new Error("NikkyAuthority is required");
- function create({approvalQueue=[],auditLog=[],executor=null,policy}={}){
+ function create({approvalQueue=[],auditLog=[],executor=null,policy,now=()=>Date.now(),approvalTtlMs=15*60*1000}={}){
    function record(action,decision,detail){
      const entry=Authority.auditEntry(action,decision,detail);
      auditLog.unshift(entry);
@@ -18,11 +18,13 @@
      }
      if(verdict.level===Authority.LEVELS.APPROVAL){
        const item={
-         id:String(Date.now())+"-"+Math.random().toString(36).slice(2,8),
+         id:String(now())+"-"+Math.random().toString(36).slice(2,8),
          action,
          title:action.title||action.type,
          body:action.summary||verdict.reason,
-         createdAt:new Date().toISOString()
+         createdAt:new Date(now()).toISOString(),
+         expiresAt:new Date(now()+approvalTtlMs).toISOString(),
+         status:"pending"
        };
        approvalQueue.unshift(item);
        return {status:"approval_required",verdict,item};
@@ -41,7 +43,10 @@
    async function approve(id){
      const i=approvalQueue.findIndex(x=>x.id===id);
      if(i<0) return {status:"not_found"};
-     const item=approvalQueue.splice(i,1)[0];
+     const item=approvalQueue[i];
+     if(item.status!=="pending") return {status:item.status};
+     if(Date.parse(item.expiresAt)<=now()){item.status="expired";record(item.action,"approval_expired","Approval expired before execution");return {status:"expired",item};}
+     approvalQueue.splice(i,1);item.status="approved";item.decidedAt=new Date(now()).toISOString();
      record(item.action,"approved","User approved action");
      if(typeof executor!=="function") return {status:"approved_no_executor",item};
      const result=await executor(item.action);
@@ -55,7 +60,10 @@
    function reject(id){
      const i=approvalQueue.findIndex(x=>x.id===id);
      if(i<0) return {status:"not_found"};
-     const item=approvalQueue.splice(i,1)[0];
+     const item=approvalQueue[i];
+     if(item.status!=="pending") return {status:item.status};
+     if(Date.parse(item.expiresAt)<=now()){item.status="expired";record(item.action,"approval_expired","Approval expired before rejection");return {status:"expired",item};}
+     approvalQueue.splice(i,1);item.status="rejected";item.decidedAt=new Date(now()).toISOString();
      record(item.action,"rejected","User rejected action");
      return {status:"rejected",item};
    }
