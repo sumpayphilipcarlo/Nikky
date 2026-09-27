@@ -1,4 +1,10 @@
 const assert=require("assert");
+const {createRelationshipGraph}=require("../core/relationships.js");
+const {detectCommitments,createCommitmentStore}=require("../core/commitments.js");
+const {recommendFollowUps,draftFollowUp}=require("../core/followups.js");
+const Gmail=require("../providers/gmail.js");
+const Message=require("../core/message.js");
+
 const Memory=require("../core/memory.js");
 const {createIdentityService}=require("../core/identity.js");
 const {createScheduler}=require("../core/scheduler.js");
@@ -227,6 +233,41 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(snap.counters['suggestions.total:{}'],1);
   assert.equal(snap.counters['suggestions.accepted:{}'],1);
   assert.equal(snap.counters['authority.approval:{}'],1);
+
+  const graph=createRelationshipGraph();
+  graph.upsertPerson({id:"tim",name:"Tim",email:"tim@example.com",priority:10});
+  graph.recordInteraction({personId:"tim",channel:"email",direction:"outbound"});
+  assert.equal(graph.find("tim")[0].interactions,1);
+
+  const detected=detectCommitments("I'll send the report tomorrow.",{source:"email",now:new Date("2026-09-27T08:00:00Z")});
+  assert.equal(detected.length,1);
+  assert.equal(detected[0].owner,"self");
+  const commitments=createCommitmentStore(detected);
+  assert.equal(commitments.open().length,1);
+  const overdue=recommendFollowUps({commitments:commitments.list(),now:new Date("2026-09-29T08:00:00Z")});
+  assert.equal(overdue[0].kind,"commitment-overdue");
+  assert.ok(draftFollowUp(overdue[0],{personName:"Tim"}).body.includes("Tim"));
+
+  const normalizedMail=Gmail.normalizeMessage({id:"g1",threadId:"t1",snippet:"Hello",payload:{headers:[{name:"Subject",value:"Meeting"},{name:"From",value:"Tim <tim@example.com>"}]}});
+  assert.equal(normalizedMail.subject,"Meeting");
+  assert.ok(normalizedMail.from.includes("tim@example.com"));
+
+  const fakeToken={getToken:async()=>({ok:true,accessToken:"token"}),clear:()=>{}};
+  const gmail=Gmail.createGmailAdapter({
+    tokenProvider:fakeToken,
+    fetchFn:async(url)=>url.includes("/messages?")?
+      {ok:true,status:200,json:async()=>({messages:[{id:"m1"}]})}:
+      {ok:true,status:200,json:async()=>({id:"m1",threadId:"t1",snippet:"Need reply",payload:{headers:[{name:"Subject",value:"Request"}]}})}
+  });
+  const recent=await gmail.listRecent({maxResults:1});
+  assert.equal(recent.ok,true);
+  assert.equal(recent.live,true);
+  assert.equal(recent.messages[0].subject,"Request");
+
+  const emailRaw=Message.buildEmail({to:"tim@example.com",subject:"Hello\r\nBcc: bad@example.com",body:"Test"});
+  assert.ok(!emailRaw.includes("\r\nBcc:"));
+  assert.throws(()=>Message.buildEmail({subject:"No recipient"}));
+  assert.equal(Message.buildSms({to:"+123",body:" hello "}).body,"hello");
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
