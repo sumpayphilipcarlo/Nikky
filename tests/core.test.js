@@ -3,6 +3,7 @@ const Authority=require("../authority.js");
 global.NikkyAuthority=Authority;
 const Orchestrator=require("../orchestrator.js");
 const Context=require("../context.js");
+const Proactive=require("../proactive.js");
 
 (async()=>{
   assert.equal(Authority.evaluate({type:"weather.read"}).level,Authority.LEVELS.AUTO);
@@ -20,6 +21,14 @@ const Context=require("../context.js");
   const denied=await orch.propose({type:"external.highImpact"});
   assert.equal(denied.status,"denied");
 
+  const failing=Orchestrator.create({
+    approvalQueue:[],
+    auditLog:[],
+    executor:async()=>({ok:false,reason:"provider unavailable"})
+  });
+  const failResult=await failing.propose({type:"weather.read"});
+  assert.equal(failResult.status,"execution_failed");
+
   const ctx=Context.create();
   ctx.observe("prep.duration",{minutes:40});
   ctx.observe("prep.duration",{minutes:50});
@@ -28,6 +37,18 @@ const Context=require("../context.js");
   const learned=ctx.infer();
   assert.equal(learned.typicalPrepMinutes,45);
   assert.equal(learned.typicalCommuteMinutes,60);
+
+  const now=new Date("2026-09-27T06:20:00");
+  const suggestions=Proactive.detect({
+    now,
+    routine:{arrival:"09:00",prep:45,commute:60,buffer:15},
+    learned:{typicalPrepMinutes:45,typicalCommuteMinutes:60},
+    events:[{id:"a1",title:"Anniversary",type:"Anniversary",date:"2026-10-02"}]
+  });
+  assert.ok(suggestions.some(x=>x.kind==="life-event"));
+  assert.ok(suggestions.some(x=>x.kind==="departure"));
+
+  assert.equal(Authority.evaluate({type:"proactive.notify"}).level,Authority.LEVELS.AUTO);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
