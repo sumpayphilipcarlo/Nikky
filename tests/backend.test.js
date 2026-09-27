@@ -110,7 +110,7 @@ const Orchestrator=require("../orchestrator.js");
  assert.equal(res.headers.get("x-frame-options"),"DENY");
  assert.ok(res.headers.get("x-request-id"));
 
- runtime.policyStore.upsert({id:"auto-note",actionType:"note.create",effect:"auto"});
+ runtime.policyStore.add({id:"auto-note",actionType:"note.create",effect:"allow"});
  const scopedResult=await runtime.propose({type:"note.create",payload:{body:"hello"}});
  assert.equal(scopedResult.result.verdict.level,"auto");
  assert.equal(runtime.auditLedger.verify().ok,true);
