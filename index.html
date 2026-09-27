@@ -31,6 +31,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <button class="nav" data-view="notes">Notes</button>
     <button class="nav" data-view="approvals">Approvals <span id="ab" class="badge">0</span></button>
     <button class="nav" data-view="audit">Audit Trail</button>
+    <button class="nav" data-view="learning">Learning</button>
   </nav>
 </aside>
 <main>
@@ -104,15 +105,44 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
   <div class="top"><div><div class="eyebrow">AUDIT TRAIL</div><h1>What Nikky decided and why</h1><p class="muted">Every authority decision and execution outcome is recorded locally in this prototype.</p></div></div>
   <div id="auditLog" class="list"></div>
 </section>
+<section id="view-learning" class="view">
+  <div class="top"><div><div class="eyebrow">WHAT NIKKY LEARNED</div><h1>Daily context learning</h1><p class="muted">Nikky can learn patterns from observed behavior, but learned context never grants new permissions.</p></div></div>
+  <div class="grid">
+    <article class="card">
+      <h3>Learned patterns</h3>
+      <div id="learnedPatterns" class="list"></div>
+      <button class="secondary" id="runInference" style="margin-top:12px">Recalculate patterns</button>
+    </article>
+    <article class="card">
+      <h3>Add observation</h3>
+      <label>Observation type</label>
+      <select id="obsType">
+        <option value="departure.actual">Actual departure time</option>
+        <option value="prep.duration">Preparation duration</option>
+        <option value="commute.duration">Commute duration</option>
+      </select>
+      <label>Value</label>
+      <input id="obsValue" placeholder="Example: 07:20 or 45"/>
+      <button class="primary" id="addObservation" style="margin-top:12px;width:100%">Add observation</button>
+      <button class="danger" id="resetLearning" style="margin-top:8px;width:100%">Reset learned context</button>
+    </article>
+    <article class="card hero">
+      <div class="eyebrow">PROACTIVE SUGGESTION</div>
+      <h3 id="proactiveSuggestion">Nikky needs more observations before making a learned suggestion.</h3>
+      <p class="muted" id="proactiveReason">Suggestions are advisory until a corresponding action passes through the Authority Engine.</p>
+    </article>
+  </div>
+</section>
 </main>
 </div>
 <script src="authority.js"></script>
 <script src="orchestrator.js"></script>
+<script src="context.js"></script>
 <script>
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),context:load("nikky.context",{observations:[],learned:{},lastInference:null}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -124,8 +154,9 @@ const state={
   {id:"notes",name:"Notes",icon:"📝",enabled:true,live:true}
  ])
 };let selectedNote=null;
-function persist(){save("nikky.routine",state.routine);save("nikky.events",state.events);save("nikky.notes",state.notes);save("nikky.approvals",state.approvals);save("nikky.audit",state.audit);save("nikky.skills",state.skills)}
+function persist(){save("nikky.routine",state.routine);save("nikky.events",state.events);save("nikky.notes",state.notes);save("nikky.approvals",state.approvals);save("nikky.audit",state.audit);state.context=contextEngine.snapshot();save("nikky.context",state.context);save("nikky.skills",state.skills)}
 const orchestrator=NikkyOrchestrator.create({approvalQueue:state.approvals,auditLog:state.audit,executor:async(action)=>({ok:false,reason:"No live provider executor configured for "+action.type})});
+const contextEngine=NikkyContext.create(state.context);
 function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>{document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));q("view-"+b.dataset.view).classList.add("active")});
 function mins(s){let[a,b]=s.split(":").map(Number);return a*60+b}function hm(n){n=(n+1440)%1440;return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
@@ -143,13 +174,47 @@ function renderApprovals(){q("ab").textContent=state.approvals.length;q("approva
 async function decision(id,approved){if(approved)await orchestrator.approve(id);else orchestrator.reject(id);persist();renderApprovals();renderAudit()}
 async function proposeAction(action){const out=await orchestrator.propose(action);persist();renderApprovals();renderAudit();return out}
 function renderAudit(){q("auditLog").innerHTML=state.audit.length?state.audit.map(a=>`<div class="item"><strong>${esc(a.action)} · ${esc(a.decision)}</strong><div class="muted small">${new Date(a.ts).toLocaleString()}</div><p class="muted small">${esc(a.detail||"")}</p></div>`).join(""):'<div class="card muted">No audit events yet.</div>'}
+
+function renderLearning(){
+  const learned=contextEngine.state.learned||{};
+  const rows=[];
+  if(Number.isFinite(learned.preferredDepartureMinutes)) rows.push(`<div class="item"><strong>Typical departure</strong><div class="muted small">${hm(learned.preferredDepartureMinutes)} · ${learned.sampleCounts?.departure||0} samples</div></div>`);
+  if(Number.isFinite(learned.typicalPrepMinutes)) rows.push(`<div class="item"><strong>Typical preparation</strong><div class="muted small">${learned.typicalPrepMinutes} min · ${learned.sampleCounts?.prep||0} samples</div></div>`);
+  if(Number.isFinite(learned.typicalCommuteMinutes)) rows.push(`<div class="item"><strong>Typical commute</strong><div class="muted small">${learned.typicalCommuteMinutes} min · ${learned.sampleCounts?.commute||0} samples</div></div>`);
+  q("learnedPatterns").innerHTML=rows.length?rows.join(""):'<div class="muted">No stable patterns learned yet.</div>';
+  const suggestion=q("proactiveSuggestion"),reason=q("proactiveReason");
+  if(Number.isFinite(learned.typicalPrepMinutes)&&Number.isFinite(learned.typicalCommuteMinutes)){
+    const arr=mins(state.routine.arrival),leave=arr-learned.typicalCommuteMinutes-state.routine.buffer,wake=leave-learned.typicalPrepMinutes;
+    suggestion.textContent=`Based on learned behavior, wake around ${hm(wake)} and leave around ${hm(leave)}.`;
+    reason.textContent=`This uses learned prep (${learned.typicalPrepMinutes} min) and commute (${learned.typicalCommuteMinutes} min) patterns. It does not change your routine automatically.`;
+  }else{
+    suggestion.textContent="Nikky needs more observations before making a learned suggestion.";
+    reason.textContent="Suggestions are advisory until a corresponding action passes through the Authority Engine.";
+  }
+}
+function addLearningObservation(){
+  const type=q("obsType").value,value=q("obsValue").value.trim();
+  if(!value)return;
+  if(type==="departure.actual"){
+    if(!/^\d{1,2}:\d{2}$/.test(value))return;
+    contextEngine.observe(type,{minutesFromMidnight:mins(value)},"manual");
+  }else{
+    const n=Number(value);if(!Number.isFinite(n)||n<0)return;
+    contextEngine.observe(type,{minutes:n},"manual");
+  }
+  contextEngine.infer();q("obsValue").value="";persist();renderLearning();
+}
+
 function buildAudit(){let checks=[["Nikky Core reasoning backend",false],["Calendar live integration",state.skills.find(s=>s.id==="calendar")?.live],["Gmail live integration",state.skills.find(s=>s.id==="gmail")?.live],["Cloud memory",false],["Maps & live traffic",state.skills.find(s=>s.id==="maps")?.live],["Spotify control",state.skills.find(s=>s.id==="spotify")?.live],["SMS",state.skills.find(s=>s.id==="sms")?.live],["Calls",state.skills.find(s=>s.id==="calls")?.live]];let top=checks.find(x=>!x[1]);q("buildAudit").innerHTML=`<div class="item"><strong>${top?top[0]:"No pending gaps"}</strong><div class="muted small">30-minute in-app audit while Nikky is open</div></div>`}
 async function weather(){if(!navigator.geolocation){q("weather").textContent="Location unavailable.";return}q("weather").textContent="Checking…";navigator.geolocation.getCurrentPosition(async p=>{try{let u=`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&current=temperature_2m,rain,precipitation&timezone=auto`;let j=await (await fetch(u)).json();let rain=j.current?.rain??j.current?.precipitation??0;q("weather").textContent=`${Math.round(j.current.temperature_2m)}°C · ${rain>0?"Rain detected — bring an umbrella.":"No current rain detected."}`}catch{q("weather").textContent="Weather check failed."}},()=>q("weather").textContent="Location permission not granted.")}
 q("weatherBtn").onclick=weather;
+q("addObservation").onclick=addLearningObservation;
+q("runInference").onclick=()=>{contextEngine.infer();persist();renderLearning()};
+q("resetLearning").onclick=()=>{contextEngine.reset();persist();renderLearning()};
 function process(raw){let l=raw.trim().toLowerCase().replace(/^hey nikky[,s]*/,"");q("transcript").textContent=raw;q("result").classList.remove("hidden");if(l.includes("when should i leave")||l.includes("what time")&&l.includes("leave")){let r=state.routine,leave=mins(r.arrival)-r.commute-r.buffer;q("result").innerHTML=`<strong>Leave by ${hm(leave)}.</strong><p>Using your baseline commute and arrival buffer.</p>`;return}if(l.includes("weather")){weather();q("result").innerHTML="<strong>Checking weather now.</strong>";return}if(l.includes("summar")&&l.includes("pdf")&&l.includes("email")){let who=(l.match(/to\s+([a-z][a-z0-9_-]*)/)||[])[1]||"recipient";proposeAction({type:"email.send",title:`Email PDF summary to ${who}`,summary:`Summarize the selected PDF and email the summary to ${who}. Requires live Gmail + AI backend.`,payload:{recipient:who},provenance:{source:"voice-command"}});q("result").innerHTML="<strong>Routed through Authority Engine.</strong><p>Approval is required before external sending.</p>";return}if(l.startsWith("remember ")||l.startsWith("note ")){let body=l.replace(/^(remember|note)\s+/,"");proposeAction({type:"note.create",title:"Voice note",summary:body,payload:{body},provenance:{source:"voice-command"}}).then(()=>{state.notes.unshift({id:String(Date.now()),title:"Voice note",body,updated:Date.now()});persist();renderNotes();renderAudit()});q("result").innerHTML="<strong>Remembered.</strong>";return}q("result").innerHTML="<strong>Nikky Core planner</strong><p>I would decompose this request, check required Skills, execute low-risk local steps, and route sensitive external actions through approval.</p>"}
 q("run").onclick=()=>{process(q("cmd").value);q("cmd").value=""};q("cmd").addEventListener("keydown",e=>{if(e.key==="Enter")q("run").click()});
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;function startVoice(){document.querySelector('[data-view="voice"]').click();if(!SR){q("result").classList.remove("hidden");q("result").textContent="Speech recognition is not available in this browser.";return}let r=new SR();r.lang="en-US";r.interimResults=true;r.onresult=e=>{let t=[...e.results].map(x=>x[0].transcript).join(" ");q("transcript").textContent=t;if(e.results[e.results.length-1].isFinal)process(t)};r.start()}q("orb").onclick=startVoice;q("micTop").onclick=startVoice;
-function init(){let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();buildAudit();setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
+function init(){let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();renderLearning();buildAudit();setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
 </script>
 </body>
 </html>
