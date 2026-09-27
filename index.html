@@ -139,6 +139,12 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
   <div class="top"><div><div class="eyebrow">CROSS-APP ORCHESTRATION</div><h1>Event → departure → communication</h1><p class="muted">Prototype workflow combining calendar-style event context with learned preparation and commute behavior. Live Calendar, Maps, and SMS providers are not connected yet.</p></div></div>
   <div class="grid">
     <article class="card">
+      <h3>Calendar source</h3>
+      <p class="muted small">Using a provider adapter. Current mode is mock/local only; no live Calendar account is connected.</p>
+      <button class="secondary" id="loadUpcoming">Load upcoming event</button>
+      <div id="providerStatus" class="item" style="margin-top:10px"><strong>Mock calendar adapter</strong><div class="muted small">Local test data only</div></div>
+    </article>
+    <article class="card">
       <h3>Event context</h3>
       <label>Event title</label><input id="journeyTitle" placeholder="Client meeting"/>
       <label>Event time</label><input type="time" id="journeyTime" value="09:00"/>
@@ -160,6 +166,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 <script src="context.js"></script>
 <script src="proactive.js"></script>
 <script src="journey.js"></script>
+<script src="providers.js"></script>
 <script>
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
@@ -184,6 +191,9 @@ const orchestrator=NikkyOrchestrator.create({approvalQueue:state.approvals,audit
   return {ok:false,reason:"No live provider executor configured for "+action.type};
 }});
 const contextEngine=NikkyContext.create(state.context);
+const calendarAdapter=NikkyProviders.createCalendarAdapter({mode:"mock",events:[
+  {id:"demo-1",title:"Morning meeting",start:new Date(Date.now()+2*60*60*1000).toISOString(),location:state.routine.workLocation||"Office",contact:"meeting contact"}
+]});
 function esc(s=""){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>{document.querySelectorAll(".nav").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));q("view-"+b.dataset.view).classList.add("active")});
 function mins(s){let[a,b]=s.split(":").map(Number);return a*60+b}function hm(n){n=(n+1440)%1440;return String(Math.floor(n/60)).padStart(2,"0")+":"+String(n%60).padStart(2,"0")}
@@ -233,6 +243,22 @@ function addLearningObservation(){
 }
 
 
+
+
+async function loadUpcomingEvent(){
+  const result=await calendarAdapter.listUpcoming({from:new Date(),limit:1});
+  const status=q("providerStatus");
+  if(!result.ok||!result.events.length){
+    status.innerHTML=`<strong>Calendar unavailable</strong><div class="muted small">${esc(result.reason||"No upcoming events found")}</div>`;
+    return;
+  }
+  const e=result.events[0];
+  q("journeyTitle").value=e.title;
+  q("journeyTime").value=e.time;
+  q("journeyDestination").value=e.destination||"";
+  q("journeyContact").value=e.contact||"";
+  status.innerHTML=`<strong>Loaded from ${esc(result.source)}</strong><div class="muted small">Provider adapter is working in local mock mode. No live calendar connection is claimed.</div>`;
+}
 
 function renderJourney(result){
   if(!result||!result.ok){q("journeyPlan").innerHTML='<div class="muted">Unable to build journey plan.</div>';return}
@@ -292,6 +318,7 @@ function buildAudit(){let checks=[["Nikky Core reasoning backend",false],["Calen
 async function weather(){if(!navigator.geolocation){q("weather").textContent="Location unavailable.";return}q("weather").textContent="Checking…";navigator.geolocation.getCurrentPosition(async p=>{try{let u=`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&current=temperature_2m,rain,precipitation&timezone=auto`;let j=await (await fetch(u)).json();let rain=j.current?.rain??j.current?.precipitation??0;q("weather").textContent=`${Math.round(j.current.temperature_2m)}°C · ${rain>0?"Rain detected — bring an umbrella.":"No current rain detected."}`}catch{q("weather").textContent="Weather check failed."}},()=>q("weather").textContent="Location permission not granted.")}
 q("weatherBtn").onclick=weather;
 q("planJourney").onclick=buildJourney;
+q("loadUpcoming").onclick=loadUpcomingEvent;
 q("addObservation").onclick=addLearningObservation;
 q("runInference").onclick=()=>{contextEngine.infer();persist();renderLearning()};
 q("resetLearning").onclick=()=>{contextEngine.reset();persist();renderLearning()};
