@@ -657,11 +657,11 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550001"}},{}).effect,"auto");
   assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550002"}},{}).matched,false);
 
-  const health=createProviderHealth({now:()=>1000});
-  assert.equal(health.report("gmail",{ok:true,latencyMs:100}).status,"healthy");
-  assert.equal(health.report("gmail",{ok:false,error:"timeout"}).status,"degraded");
-  health.report("gmail",{ok:false,error:"timeout"});
-  assert.equal(health.report("gmail",{ok:false,error:"timeout"}).status,"down");
+  const healthMonitor=createProviderHealth({now:()=>1000});
+  assert.equal(healthMonitor.report("gmail",{ok:true,latencyMs:100}).status,"healthy");
+  assert.equal(healthMonitor.report("gmail",{ok:false,error:"timeout"}).status,"degraded");
+  healthMonitor.report("gmail",{ok:false,error:"timeout"});
+  assert.equal(healthMonitor.report("gmail",{ok:false,error:"timeout"}).status,"down");
 
   const registry=createSkillRegistry([{id:"gmail",name:"Gmail",permissions:["email.read"]}]);
   const enforcer=createPermissionEnforcer({registry});
