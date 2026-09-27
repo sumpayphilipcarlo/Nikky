@@ -3,11 +3,12 @@
   "version": "0.4.0",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.js && node tests/backend.test.js && node tests/e2e-scenarios.test.js && node scripts/security-check.js",
+    "test": "node tests/core.test.js && node tests/backend.test.js && node tests/e2e-scenarios.test.js && node tests/ui-static.test.js && node scripts/security-check.js",
     "start": "node server/index.js",
     "test:core": "node tests/core.test.js",
     "test:backend": "node tests/backend.test.js",
     "test:e2e": "node tests/e2e-scenarios.test.js",
-    "security": "node scripts/security-check.js"
+    "security": "node scripts/security-check.js",
+    "test:ui": "node tests/ui-static.test.js"
   }
 }
