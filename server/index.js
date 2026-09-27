@@ -66,7 +66,8 @@ function authorizeApi(req,res){
  return {mode:"session",identity:auth.session};
 }
 
-async function handler(req,res){
+async function handler(req,res,runtimeOverride=runtime){
+ const appRuntime=runtimeOverride;
  securityHeaders(res);requestId(req,res);
  if(!applyCors(req,res)){return json(res,403,{error:"origin_not_allowed"})}
  if(req.method==="OPTIONS"){res.writeHead(204);return res.end()}
@@ -112,30 +113,30 @@ async function handler(req,res){
   const principal=url.pathname.startsWith("/v1/")?authorizeApi(req,res):null;
   if(url.pathname.startsWith("/v1/")&&!principal)return;
 
-  if(req.method==="GET"&&url.pathname==="/v1/approvals")return json(res,200,{approvals:runtime.approvals});
-  if(req.method==="GET"&&url.pathname==="/v1/audit")return json(res,200,{audit:runtime.audit,integrity:runtime.auditLedger?.verify?.()||null});
-  if(req.method==="GET"&&url.pathname==="/v1/metrics")return json(res,200,runtime.metrics.snapshot());
-  if(req.method==="GET"&&url.pathname==="/v1/workflows")return json(res,200,{workflows:[...runtime.workflows.values()]});
-  if(req.method==="GET"&&url.pathname==="/v1/memory")return json(res,200,{records:runtime.memory.list()});
-  if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);return json(res,201,runtime.memory.put(body))}
+  if(req.method==="GET"&&url.pathname==="/v1/approvals")return json(res,200,{approvals:appRuntime.approvals});
+  if(req.method==="GET"&&url.pathname==="/v1/audit")return json(res,200,{audit:appRuntime.audit,integrity:appRuntime.auditLedger?.verify?.()||null});
+  if(req.method==="GET"&&url.pathname==="/v1/metrics")return json(res,200,appRuntime.metrics.snapshot());
+  if(req.method==="GET"&&url.pathname==="/v1/workflows")return json(res,200,{workflows:[...appRuntime.workflows.values()]});
+  if(req.method==="GET"&&url.pathname==="/v1/memory")return json(res,200,{records:appRuntime.memory.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);return json(res,201,appRuntime.memory.put(body))}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/memory/")){
    const id=decodeURIComponent(url.pathname.slice("/v1/memory/".length));
-   return json(res,200,{deleted:runtime.memory.remove(id)});
+   return json(res,200,{deleted:appRuntime.memory.remove(id)});
   }
-  if(req.method==="POST"&&url.pathname==="/v1/actions/propose"){const body=await readJson(req);return json(res,200,await runtime.propose(body))}
+  if(req.method==="POST"&&url.pathname==="/v1/actions/propose"){const body=await readJson(req);return json(res,200,await appRuntime.propose(body))}
   if(req.method==="POST"&&url.pathname.startsWith("/v1/approvals/")&&url.pathname.endsWith("/approve")){
-   const id=url.pathname.split("/")[3];return json(res,200,await runtime.approve(id));
+   const id=url.pathname.split("/")[3];return json(res,200,await appRuntime.approve(id));
   }
   if(req.method==="POST"&&url.pathname.startsWith("/v1/approvals/")&&url.pathname.endsWith("/reject")){
-   const id=url.pathname.split("/")[3];return json(res,200,await runtime.reject(id));
+   const id=url.pathname.split("/")[3];return json(res,200,await appRuntime.reject(id));
   }
-  if(req.method==="POST"&&url.pathname==="/v1/jobs/tick")return json(res,200,{results:await runtime.scheduler.tick()});
+  if(req.method==="POST"&&url.pathname==="/v1/jobs/tick")return json(res,200,{results:await appRuntime.scheduler.tick()});
   return json(res,404,{error:"not_found"});
  }catch(err){
   return json(res,500,{error:"internal_error",message:config.environment==="development"?err.message:undefined});
  }
 }
-function createServer(){return http.createServer(handler)}
+function createServer({runtime:runtimeOverride=runtime}={}){return http.createServer((req,res)=>handler(req,res,runtimeOverride))}
 if(require.main===module){
  const server=createServer();
  server.listen(config.port,()=>console.log(`Nikky Core listening on :${config.port}`));
