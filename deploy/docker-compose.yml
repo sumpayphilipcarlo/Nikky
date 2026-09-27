@@ -1,24 +1,65 @@
 services:
-  nikky:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    environment:
-      PORT: 3000
-      NIKKY_SERVICE_TOKEN: change-me
-      NIKKY_MEMORY_KEY: change-me-too
-      DATABASE_URL: postgres://nikky:nikky@postgres:5432/nikky
-    ports:
-      - "3000:3000"
-    depends_on:
-      - postgres
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: nikky
-      POSTGRES_PASSWORD: nikky
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: nikky
     volumes:
       - nikky_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nikky -d nikky"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nikky:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["node","server/production.js"]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NIKKY_SERVICE_TOKEN: ${NIKKY_SERVICE_TOKEN:?NIKKY_SERVICE_TOKEN is required}
+      NIKKY_MEMORY_KEY: ${NIKKY_MEMORY_KEY:?NIKKY_MEMORY_KEY is required}
+      NIKKY_SESSION_SECRET: ${NIKKY_SESSION_SECRET:?NIKKY_SESSION_SECRET is required}
+      NIKKY_ALLOWED_ORIGINS: ${NIKKY_ALLOWED_ORIGINS:-}
+      NIKKY_OIDC_ISSUER: ${NIKKY_OIDC_ISSUER:-}
+      NIKKY_OIDC_CLIENT_ID: ${NIKKY_OIDC_CLIENT_ID:-}
+      NIKKY_ALLOW_DEV_LOGIN: "false"
+      NIKKY_DEFAULT_USER_ID: ${NIKKY_DEFAULT_USER_ID:-default-user}
+      DATABASE_URL: postgres://nikky:${POSTGRES_PASSWORD}@postgres:5432/nikky
+      DATABASE_SSL: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command: ["node","server/worker-entry.js"]
+    environment:
+      NODE_ENV: production
+      NIKKY_SERVICE_TOKEN: ${NIKKY_SERVICE_TOKEN:?NIKKY_SERVICE_TOKEN is required}
+      NIKKY_MEMORY_KEY: ${NIKKY_MEMORY_KEY:?NIKKY_MEMORY_KEY is required}
+      NIKKY_SESSION_SECRET: ${NIKKY_SESSION_SECRET:?NIKKY_SESSION_SECRET is required}
+      NIKKY_DEFAULT_USER_ID: ${NIKKY_DEFAULT_USER_ID:-default-user}
+      DATABASE_URL: postgres://nikky:${POSTGRES_PASSWORD}@postgres:5432/nikky
+      DATABASE_SSL: "false"
+      NIKKY_WORKER_POLL_MS: ${NIKKY_WORKER_POLL_MS:-60000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   nikky_pg:
