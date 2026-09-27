@@ -1,5 +1,9 @@
 const crypto=require("crypto");
-function canonical(v){return JSON.stringify(v,Object.keys(v).sort())}
+function canonical(v){
+ if(v===null||typeof v!=="object")return JSON.stringify(v);
+ if(Array.isArray(v))return "["+v.map(canonical).join(",")+"]";
+ return "{"+Object.keys(v).sort().map(k=>JSON.stringify(k)+":"+canonical(v[k])).join(",")+"}";
+}
 function createAuditChain({key="development-only-change-me"}={}){
  const entries=[];
  function digest(payload){return crypto.createHmac("sha256",key).update(payload).digest("hex")}
