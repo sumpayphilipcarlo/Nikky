@@ -1,4 +1,11 @@
 const assert=require("assert");
+const {createContextGraph}=require("../core/context-graph.js");
+const Prediction=require("../core/prediction.js");
+const {createFeedbackModel}=require("../core/feedback.js");
+const {createPreferenceModel}=require("../core/preferences.js");
+const LifeEvents=require("../core/life-events.js");
+const {buildTravelPlan}=require("../core/travel.js");
+
 const Maps=require("../providers/maps.js");
 const Weather=require("../providers/weather.js");
 const {createNotificationCenter}=require("../core/notifications.js");
@@ -319,6 +326,47 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(departureResult.results[0].journey.status,"prepare-now");
   assert.equal(proposedActions.length,1);
   assert.ok(proposedActions[0].summary.includes("Rain"));
+
+  const graph2=createContextGraph();
+  graph2.upsert("person","tim",{name:"Tim"});
+  graph2.upsert("event","meeting",{title:"Meeting"});
+  graph2.link("person","tim","attends","event","meeting");
+  assert.equal(graph2.neighbors("person","tim","attends")[0].node.title,"Meeting");
+
+  const pred=Prediction.makePrediction({
+    type:"departure",
+    evidence:[{confidence:.9,weight:2},{confidence:.8,weight:1}],
+    threshold:.7,
+    impact:"low"
+  });
+  assert.equal(pred.status,"candidate");
+  assert.ok(pred.confidence>.8);
+
+  const feedback=createFeedbackModel();
+  feedback.record("departure","accepted");
+  feedback.record("departure","accepted");
+  feedback.record("departure","accepted");
+  assert.ok(feedback.trust("departure")>.5);
+
+  const prefs=createPreferenceModel({quietHours:{start:"22:00",end:"07:00"}});
+  const quietPolicy=prefs.interruptionPolicy({priority:70,now:new Date("2026-09-27T23:00:00")});
+  assert.equal(quietPolicy.mode,"silent");
+  const urgentPolicy=prefs.interruptionPolicy({priority:99,now:new Date("2026-09-27T23:00:00")});
+  assert.equal(urgentPolicy.mode,"wake");
+
+  const life=LifeEvents.preparation({id:"ann",type:"Anniversary",date:"2026-10-04"},new Date("2026-09-27T08:00:00"));
+  assert.equal(life.daysUntil,7);
+  assert.equal(life.stage,"finalize");
+
+  const travel=buildTravelPlan({
+    trip:{id:"trip1",start:"2026-09-28T08:00:00Z"},
+    weather:{rainMm:2},
+    route:{trafficDelayMinutes:25},
+    now:new Date("2026-09-27T08:00:00Z")
+  });
+  assert.ok(travel.tasks.some(t=>t.stage==="departure"));
+  assert.ok(travel.tasks.some(t=>t.stage==="weather"));
+  assert.ok(travel.tasks.some(t=>t.stage==="traffic"));
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
