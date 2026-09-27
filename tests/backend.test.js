@@ -3,6 +3,7 @@ process.env.NIKKY_SERVICE_TOKEN="test-token";
 process.env.NIKKY_MEMORY_KEY="test-memory-key";
 const {createRuntime,createActionExecutor}=require("../server/runtime.js");
 const {createServer}=require("../server/index.js");
+const Orchestrator=require("../orchestrator.js");
 
 (async()=>{
  const executor=createActionExecutor({
@@ -18,6 +19,18 @@ const {createServer}=require("../server/index.js");
  assert.match(executed.reason,/live execution/);
  executed=await executor({type:"unsupported.action"});
  assert.equal(executed.ok,false);
+
+ let clock=1000, executions=0;
+ const approvalQueue=[],approvalAudit=[];
+ const approvalOrchestrator=Orchestrator.create({approvalQueue,auditLog:approvalAudit,now:()=>clock,approvalTtlMs:100,executor:async()=>{executions++;return {ok:true,live:true}}});
+ const expiring=await approvalOrchestrator.propose({type:"sms.send",to:"+15550000000",body:"test"});
+ clock=1100;
+ const expired=await approvalOrchestrator.approve(expiring.item.id);
+ assert.equal(expired.status,"expired");
+ assert.equal(executions,0);
+ const replay=await approvalOrchestrator.approve(expiring.item.id);
+ assert.notEqual(replay.status,"executed");
+ assert.equal(executions,0);
 
  const runtime=createRuntime({providers:{
   gmail:{send:async()=>({ok:true,live:true,source:"gmail-test",message:{id:"m1"}})},
