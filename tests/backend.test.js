@@ -2,6 +2,8 @@ const assert=require("assert");
 const {loadConfig}=require("../server/config.js");
 process.env.NIKKY_SERVICE_TOKEN="test-token";
 process.env.NIKKY_MEMORY_KEY="test-memory-key";
+process.env.NIKKY_SESSION_SECRET="s".repeat(48);
+process.env.NIKKY_ALLOW_DEV_LOGIN="true";
 const {createRuntime,createActionExecutor}=require("../server/runtime.js");
 const {createServer}=require("../server/index.js");
 const Orchestrator=require("../orchestrator.js");
@@ -102,8 +104,26 @@ const Orchestrator=require("../orchestrator.js");
  assert.equal(body.result.status,"approval_required");
 
  assert.equal(loadConfig({NODE_ENV:"production",PORT:"3000"}).valid,false);
- const validCfg=loadConfig({NODE_ENV:"production",PORT:"3000",NIKKY_SERVICE_TOKEN:"x".repeat(32),NIKKY_MEMORY_KEY:"y".repeat(32),DATABASE_URL:"postgres://example"});
+ const validCfg=loadConfig({NODE_ENV:"production",PORT:"3000",NIKKY_SERVICE_TOKEN:"x".repeat(32),NIKKY_MEMORY_KEY:"y".repeat(32),NIKKY_SESSION_SECRET:"z".repeat(32),DATABASE_URL:"postgres://example"});
  assert.equal(validCfg.valid,true);
+
+ res=await fetch(base+"/auth/session",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({devUserId:"web-user",email:"web@example.com"})});
+ assert.equal(res.status,201);
+ const setCookies=typeof res.headers.getSetCookie==="function"?res.headers.getSetCookie():[res.headers.get("set-cookie")].filter(Boolean);
+ assert.ok(setCookies.length>=1);
+ const cookieHeader=setCookies.map(x=>x.split(";")[0]).join("; ");
+ const csrfMatch=cookieHeader.match(/nikky_csrf=([^;]+)/);
+ assert.ok(csrfMatch);
+ const csrf=decodeURIComponent(csrfMatch[1]);
+
+ res=await fetch(base+"/v1/memory",{headers:{cookie:cookieHeader}});
+ assert.equal(res.status,200);
+
+ res=await fetch(base+"/v1/memory",{method:"POST",headers:{cookie:cookieHeader,"content-type":"application/json"},body:JSON.stringify({id:"csrf-blocked",type:"test",value:{}})});
+ assert.equal(res.status,403);
+
+ res=await fetch(base+"/v1/memory",{method:"POST",headers:{cookie:cookieHeader,"x-nikky-csrf":csrf,"content-type":"application/json"},body:JSON.stringify({id:"session-memory",type:"test",value:{ok:true}})});
+ assert.equal(res.status,201);
 
  res=await fetch(base+"/health");
  assert.equal(res.headers.get("x-content-type-options"),"nosniff");
