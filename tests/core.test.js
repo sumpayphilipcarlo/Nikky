@@ -1,4 +1,9 @@
 const assert=require("assert");
+const Maps=require("../providers/maps.js");
+const Weather=require("../providers/weather.js");
+const {createNotificationCenter}=require("../core/notifications.js");
+const {createDepartureService}=require("../core/departure-service.js");
+
 const {createRelationshipGraph}=require("../core/relationships.js");
 const {detectCommitments,createCommitmentStore}=require("../core/commitments.js");
 const {recommendFollowUps,draftFollowUp}=require("../core/followups.js");
@@ -268,6 +273,52 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.ok(!emailRaw.includes("\r\nBcc:"));
   assert.throws(()=>Message.buildEmail({subject:"No recipient"}));
   assert.equal(Message.buildSms({to:"+123",body:" hello "}).body,"hello");
+
+  const maps=Maps.createGoogleRoutesAdapter({
+    apiKey:"key",
+    fetchFn:async()=>({ok:true,status:200,json:async()=>({routes:[{duration:"5400s",staticDuration:"3600s",distanceMeters:25000}]})})
+  });
+  const route=await maps.travelTime({origin:"Home",destination:"Office",departureTime:new Date("2026-09-27T07:00:00Z")});
+  assert.equal(route.ok,true);
+  assert.equal(route.durationMinutes,90);
+  assert.equal(route.trafficDelayMinutes,30);
+
+  const weather=Weather.createOpenMeteoAdapter({
+    fetchFn:async()=>({ok:true,status:200,json:async()=>({current:{temperature_2m:29,precipitation:1.2,rain:1,weather_code:61,wind_speed_10m:10}})})
+  });
+  const wx=await weather.current({latitude:14.5,longitude:121.0});
+  assert.equal(wx.live,true);
+  assert.equal(wx.condition,"rain");
+
+  let nowN=1000;
+  const notifications=createNotificationCenter({now:()=>nowN,dedupeMs:60000});
+  const n={type:"departure",title:"Leave now",body:"Go",priority:85};
+  assert.equal(notifications.shouldDeliver(n),true);
+  notifications.record(n,"push");
+  assert.equal(notifications.shouldDeliver(n),false);
+  nowN+=60001;
+  assert.equal(notifications.shouldDeliver(n),true);
+
+  const fakeCalendar={
+    listUpcoming:async()=>({ok:true,live:true,events:[{
+      id:"e1",title:"Meeting",time:"09:00",start:"2026-09-27T09:00:00Z",destination:"Office",source:"test-calendar"
+    }]})
+  };
+  const proposedActions=[];
+  const departure=createDepartureService({
+    calendar:fakeCalendar,
+    maps:{travelTime:async()=>({ok:true,live:true,durationMinutes:90,trafficDelayMinutes:30})},
+    weather:{current:async()=>({ok:true,live:true,rainMm:1,precipitationMm:1})},
+    proposeAction:async a=>{proposedActions.push(a);return {status:"executed"}},
+    getContext:()=>({routine:{prep:45,commute:60,buffer:15},learned:{}}),
+    now:()=>new Date("2026-09-27T07:30:00Z")
+  });
+  const departureResult=await departure.scan({origin:"Home",coordinates:{latitude:14.5,longitude:121}});
+  assert.equal(departureResult.ok,true);
+  assert.equal(departureResult.results.length,1);
+  assert.equal(departureResult.results[0].journey.status,"prepare-now");
+  assert.equal(proposedActions.length,1);
+  assert.ok(proposedActions[0].summary.includes("Rain"));
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
