@@ -5,6 +5,7 @@ const Orchestrator=require("../orchestrator.js");
 const Context=require("../context.js");
 const Proactive=require("../proactive.js");
 const Journey=require("../journey.js");
+const Providers=require("../providers.js");
 
 (async()=>{
   assert.equal(Authority.evaluate({type:"weather.read"}).level,Authority.LEVELS.AUTO);
@@ -64,6 +65,25 @@ const Journey=require("../journey.js");
   assert.equal(journey.status,"late-risk");
   assert.ok(journey.communicationAction);
   assert.equal(journey.communicationAction.type,"sms.send");
+
+  const provider=Providers.createCalendarAdapter({
+    mode:"mock",
+    events:[
+      {id:"e1",title:"Meeting",start:"2026-09-27T09:00:00",location:"Office"},
+      {id:"e2",title:"Later",start:"2026-09-27T11:00:00",location:"Cafe"}
+    ]
+  });
+  const upcoming=await provider.listUpcoming({from:new Date("2026-09-27T08:00:00"),limit:1});
+  assert.equal(upcoming.ok,true);
+  assert.equal(upcoming.live,false);
+  assert.equal(upcoming.events.length,1);
+  assert.equal(upcoming.events[0].title,"Meeting");
+  assert.equal(upcoming.events[0].destination,"Office");
+
+  const liveProvider=Providers.createCalendarAdapter({mode:"google"});
+  const liveResult=await liveProvider.listUpcoming();
+  assert.equal(liveResult.ok,false);
+  assert.equal(liveResult.live,false);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
