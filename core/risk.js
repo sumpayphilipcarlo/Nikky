@@ -1,6 +1,6 @@
 const LEVELS=Object.freeze({LOW:"low",MEDIUM:"medium",HIGH:"high",CRITICAL:"critical"});
 const HIGH_RISK_PREFIXES=["financial.","legal.","employment.","security.privileged","data.delete","account."];
-const MEDIUM_TYPES=new Set(["email.send","sms.send","call.place","calendar.create","calendar.update","calendar.delete"]);
+const MEDIUM_TYPES=new Set(["email.send","sms.send","call.place","calendar.create","calendar.update","calendar.delete","slack.send","microsoft.email.send","whatsapp.send","home.service","spotify.play"]);
 function classify(action={}){
  const type=String(action.type||"unknown");
  const m=action.meta||{};
@@ -10,7 +10,7 @@ function classify(action={}){
  if(MEDIUM_TYPES.has(type)||m.externalImpact||m.reputationImpact||m.sensitiveData){
   return {level:LEVELS.HIGH,requiresApproval:true,autoAllowed:false,reasons:["external, sensitive, or reputation-impacting action"]};
  }
- if(type.endsWith(".read")||type==="proactive.notify"||type==="note.create"){
+ if(type.endsWith(".read")||type==="proactive.notify"||type==="note.create"||type==="push.send"){
   return {level:LEVELS.LOW,requiresApproval:false,autoAllowed:true,reasons:["local or read-only action"]};
  }
  return {level:LEVELS.MEDIUM,requiresApproval:true,autoAllowed:false,reasons:["unclassified action fails closed"]};
