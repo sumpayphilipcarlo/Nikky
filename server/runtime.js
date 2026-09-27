@@ -9,7 +9,7 @@ const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
 const {createAuditLedger}=require("../core/audit-ledger.js");
 const {createProviderHealth}=require("../core/provider-health.js");
-const {createPolicyStore}=require("../core/policy.js");
+const {createPolicyEngine,EFFECTS}=require("../core/policy.js");
 const {createIdempotencyStore}=require("../core/idempotency.js");
 const {createGmailAdapter}=require("../providers/gmail.js");
 const {createTwilioAdapter}=require("../providers/twilio.js");
@@ -41,7 +41,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const metrics=createMetrics();
  const auditLedger=createAuditLedger();
  const providerHealth=createProviderHealth({now});
- const policyStore=createPolicyStore();
+ const policyStore=createPolicyEngine();
  const idempotency=createIdempotencyStore({now});
  const approvals=[],audit=[];
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -67,13 +67,18 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   const scoped=policyStore.evaluate(action,{
     provider:action?.provenance?.provider||action?.provenance?.source||null,
     deviceId:action?.meta?.deviceId||null,
-    now:new Date(now()).toISOString()
+    now:new Date(now()).toISOString(),
+    riskScore:risk?.score||0
   });
-  const result=await orchestrator.propose(action,scoped.matched?{
-    authorityLevel:scoped.effect,
-    reason:"Scoped authority policy "+scoped.policyId
+  const hasScopedRule=!!scoped.ruleId;
+  const authorityLevel=scoped.effect===EFFECTS.ALLOW?Authority.LEVELS.AUTO:
+    scoped.effect===EFFECTS.DENY?Authority.LEVELS.DENY:
+    scoped.effect===EFFECTS.APPROVAL?Authority.LEVELS.APPROVAL:null;
+  const result=await orchestrator.propose(action,hasScopedRule&&authorityLevel?{
+    authorityLevel,
+    reason:"Scoped authority policy "+scoped.ruleId
   }:{});
-  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.policyId||null}});
+  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.ruleId||null}});
   if(result.status==="approval_required") Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"user approval required");
   else if(result.status==="denied") Workflow.transition(wf,Workflow.STATES.CANCELLED,"authority denied action");
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
