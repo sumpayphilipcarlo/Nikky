@@ -4,6 +4,7 @@ const {createServer}=require("./index.js");
 const {createPostgresPool,checkDatabase}=require("../storage/db.js");
 const {createPostgresRepository}=require("../storage/postgres.js");
 const {migrate}=require("../storage/migrate.js");
+const {buildStoredProviders}=require("./provider-bootstrap.js");
 
 async function start(){
  const {config,warnings}=assertValidConfig(process.env);
@@ -12,8 +13,10 @@ async function start(){
  await migrate({pool});
  const db=await checkDatabase(pool);
  const repository=createPostgresRepository(pool);
- const runtime=createRuntime({workflowRepository:repository,userId:process.env.NIKKY_DEFAULT_USER_ID||"default-user"});
- await repository.upsertUser({id:process.env.NIKKY_DEFAULT_USER_ID||"default-user"});
+ const userId=process.env.NIKKY_DEFAULT_USER_ID||"default-user";
+ await repository.upsertUser({id:userId});
+ const providers=await buildStoredProviders({repository,userId,keyMaterial:config.memoryKey});
+ const runtime=createRuntime({workflowRepository:repository,userId,providers});
  await runtime.restoreWorkflows();
  const server=createServer({runtime,config,warnings});
  server.on("close",()=>pool.end().catch(()=>{}));

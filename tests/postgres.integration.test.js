@@ -44,6 +44,16 @@ const {createServer}=require("../server/index.js");
   assert.ok(body.workflows.some(w=>w.id===proposal.workflow.id));
   await new Promise(resolve=>server.close(resolve));
 
+  const providerRow=await repo.saveProviderConnection("ci-user",{id:"ci-user:google",provider:"google",status:"connected",encryptedCredentials:{v:1,alg:"AES-GCM",iv:"iv",ciphertext:"cipher"},scopes:["calendar.readonly"],lastHealth:{status:"healthy"}});
+  assert.equal(providerRow.provider,"google");
+  const providerRead=await repo.getProviderConnection("ci-user","google");
+  assert.equal(providerRead.scopes[0],"calendar.readonly");
+  const providerList=await repo.listProviderConnections("ci-user");
+  assert.ok(providerList.some(x=>x.provider==="google"));
+  await repo.updateProviderHealth("ci-user","google",{status:"degraded"});
+  assert.equal((await repo.getProviderConnection("ci-user","google")).last_health.status,"degraded");
+  assert.equal(await repo.deleteProviderConnection("ci-user","google"),true);
+
   console.log("Nikky PostgreSQL integration tests passed");
  }finally{
   await pool.query("DELETE FROM jobs WHERE id='job-ci'").catch(()=>{});
