@@ -79,6 +79,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const policyStore=createPolicyEngine();
  const idempotency=createIdempotencyStore({now});
  const approvals=[],audit=[];
+ const credentialVault=providers.credentialVault||null;
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
  const twilio=providers.twilio||createTwilioAdapter({accountSid:env.TWILIO_ACCOUNT_SID,authToken:env.TWILIO_AUTH_TOKEN,fromNumber:env.TWILIO_FROM_NUMBER,fetchFn:providers.fetchFn});
  const calendar=providers.calendar||createGoogleCalendarApiAdapter({tokenProvider:providers.googleTokenProvider,fetchFn:providers.fetchFn,calendarId:providers.calendarId||"primary"});
@@ -158,6 +159,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
