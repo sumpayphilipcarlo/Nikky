@@ -311,7 +311,7 @@ const GoogleCalendar=require("../google-calendar.js");
     weather:{current:async()=>({ok:true,live:true,rainMm:1,precipitationMm:1})},
     proposeAction:async a=>{proposedActions.push(a);return {status:"executed"}},
     getContext:()=>({routine:{prep:45,commute:60,buffer:15},learned:{}}),
-    now:()=>new Date("2026-09-27T07:30:00Z")
+    now:()=>new Date("2026-09-27T06:45:00Z")
   });
   const departureResult=await departure.scan({origin:"Home",coordinates:{latitude:14.5,longitude:121}});
   assert.equal(departureResult.ok,true);
