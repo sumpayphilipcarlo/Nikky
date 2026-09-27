@@ -1,4 +1,10 @@
 const assert=require("assert");
+const Memory=require("../core/memory.js");
+const {createIdentityService}=require("../core/identity.js");
+const {createScheduler}=require("../core/scheduler.js");
+const {createPrivacyController}=require("../core/privacy.js");
+const Observability=require("../core/observability.js");
+
 const Workflow=require("../core/workflow-engine.js");
 const {createIdempotencyStore}=require("../core/idempotency.js");
 const Risk=require("../core/risk.js");
@@ -179,6 +185,48 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(retried.ok,true);
   assert.equal(retried.attempt,2);
   assert.equal(Recovery.backoff(3,{baseMs:100,maxMs:1000}),400);
+
+  const sealed=await Memory.seal({secret:"hello"},"test-key");
+  const opened=await Memory.open(sealed,"test-key");
+  assert.equal(opened.secret,"hello");
+  const mem=Memory.createMemoryStore({retentionDays:1});
+  mem.put({id:"m1",type:"preference",value:{buffer:15}});
+  assert.equal(mem.get("m1").value.buffer,15);
+  assert.equal(mem.exportAll().length,1);
+
+  const ids=createIdentityService();
+  ids.registerUser({id:"u1",email:"u@example.com"});
+  ids.trustDevice("u1",{id:"d1",platform:"android"});
+  const session=ids.createSession("u1",{deviceId:"d1"});
+  assert.equal(ids.verifySession(session.id).userId,"u1");
+  ids.revokeDevice("d1");
+  assert.equal(ids.verifySession(session.id),null);
+
+  let nowMs=1000,jobRuns=0;
+  const scheduler=createScheduler({now:()=>nowMs});
+  scheduler.upsert({id:"calendar-scan",intervalMs:60000,handler:async()=>++jobRuns});
+  let tick=await scheduler.tick(nowMs);
+  assert.equal(tick[0].ok,true);
+  assert.equal(jobRuns,1);
+  tick=await scheduler.tick(nowMs+1000);
+  assert.equal(tick.length,0);
+  nowMs+=60000;
+  tick=await scheduler.tick(nowMs);
+  assert.equal(jobRuns,2);
+
+  const privacy=createPrivacyController();
+  assert.equal(privacy.canLearn("location","home"),false);
+  assert.equal(privacy.retentionFor("communications"),90);
+  privacy.blockLearning("relationships","person-1");
+  assert.equal(privacy.canLearn("relationships","person-1"),false);
+
+  const metrics=Observability.createMetrics();
+  Observability.recordSuggestion(metrics,{accepted:true});
+  Observability.recordAction(metrics,{decision:"approval",status:"completed"});
+  const snap=metrics.snapshot();
+  assert.equal(snap.counters['suggestions.total:{}'],1);
+  assert.equal(snap.counters['suggestions.accepted:{}'],1);
+  assert.equal(snap.counters['authority.approval:{}'],1);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
