@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleDisplayName</key><string>Nikky</string>
+  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>NSMicrophoneUsageDescription</key><string>Nikky uses the microphone only when you explicitly use voice features.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>Nikky uses speech recognition when you request voice input.</string>
+  <key>NSLocationWhenInUseUsageDescription</key><string>Nikky uses location for travel and departure intelligence when you allow it.</string>
+  <key>UIBackgroundModes</key><array><string>fetch</string><string>remote-notification</string></array>
+  <key>NIKKYBaseURL</key><string>$(NIKKY_BASE_URL)</string>
+</dict></plist>
