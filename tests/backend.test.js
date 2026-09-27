@@ -1,11 +1,28 @@
 const assert=require("assert");
 process.env.NIKKY_SERVICE_TOKEN="test-token";
 process.env.NIKKY_MEMORY_KEY="test-memory-key";
-const {createRuntime}=require("../server/runtime.js");
+const {createRuntime,createActionExecutor}=require("../server/runtime.js");
 const {createServer}=require("../server/index.js");
 
 (async()=>{
- const runtime=createRuntime();
+ const executor=createActionExecutor({
+  gmail:{send:async({raw})=>({ok:true,live:true,source:"gmail-test",message:{id:raw}})},
+  twilio:{sendSms:async({to,body})=>({ok:true,live:true,source:"twilio-test",data:{sid:"SM1",to,body}}),placeCall:async()=>({ok:true,live:true,source:"twilio-test",data:{sid:"CA1"}})}
+ });
+ let executed=await executor({type:"sms.send",to:"+15550000000",body:"hello"});
+ assert.equal(executed.ok,true);
+ assert.equal(executed.live,true);
+ const failClosed=createActionExecutor({gmail:{send:async()=>({ok:true,live:false,source:"mock"})}});
+ executed=await failClosed({type:"email.send",raw:"test"});
+ assert.equal(executed.ok,false);
+ assert.match(executed.reason,/live execution/);
+ executed=await executor({type:"unsupported.action"});
+ assert.equal(executed.ok,false);
+
+ const runtime=createRuntime({providers:{
+  gmail:{send:async()=>({ok:true,live:true,source:"gmail-test",message:{id:"m1"}})},
+  twilio:{sendSms:async()=>({ok:true,live:true,source:"twilio-test",data:{sid:"SM1"}}),placeCall:async()=>({ok:true,live:true,source:"twilio-test",data:{sid:"CA1"}})}
+ }});
  runtime.memory.put({id:"pref1",type:"preference",value:{arrivalBuffer:15}});
  assert.equal(runtime.memory.get("pref1").value.arrivalBuffer,15);
  const proposed=await runtime.propose({type:"email.send",title:"Test email"});
@@ -13,6 +30,13 @@ const {createServer}=require("../server/index.js");
  assert.equal(runtime.approvals.length,1);
  const rejected=runtime.reject(runtime.approvals[0].id);
  assert.equal(rejected.status,"rejected");
+ const sendProposal=await runtime.propose({type:"sms.send",title:"Approved SMS",to:"+15550000000",body:"On my way"});
+ assert.equal(sendProposal.result.status,"approval_required");
+ const approved=await runtime.approve(sendProposal.result.item.id);
+ assert.equal(approved.status,"executed");
+ assert.equal(approved.result.live,true);
+ assert.ok(runtime.audit.some(e=>e.decision==="approved"));
+ assert.ok(runtime.audit.some(e=>e.decision==="executed"));
 
  const server=createServer();
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
