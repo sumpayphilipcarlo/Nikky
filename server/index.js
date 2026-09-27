@@ -117,6 +117,11 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="GET"&&url.pathname==="/v1/audit")return json(res,200,{audit:appRuntime.audit,integrity:appRuntime.auditLedger?.verify?.()||null});
   if(req.method==="GET"&&url.pathname==="/v1/metrics")return json(res,200,appRuntime.metrics.snapshot());
   if(req.method==="GET"&&url.pathname==="/v1/workflows")return json(res,200,{workflows:[...appRuntime.workflows.values()]});
+  if(req.method==="GET"&&url.pathname==="/v1/providers"){
+   const vault=appRuntime.credentialVault||appRuntime.providers?.credentialVault;
+   const connections=vault?.list?await vault.list():[];
+   return json(res,200,{providers:connections,health:appRuntime.providerHealth?.snapshot?.()||[]});
+  }
   if(req.method==="GET"&&url.pathname==="/v1/memory")return json(res,200,{records:appRuntime.memory.list()});
   if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);return json(res,201,appRuntime.memory.put(body))}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/memory/")){
