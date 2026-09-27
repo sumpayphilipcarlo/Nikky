@@ -4,6 +4,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,4 +13,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm install --ignore-scripts
       - run: npm test
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nikky
+          POSTGRES_PASSWORD: nikky-ci-password
+          POSTGRES_DB: nikky
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nikky -d nikky"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://nikky:nikky-ci-password@127.0.0.1:5432/nikky
+      NODE_ENV: test
+      NIKKY_SERVICE_TOKEN: pppppppppppppppppppppppppppppppppppppppp
+      NIKKY_MEMORY_KEY: mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+      NIKKY_SESSION_SECRET: ssssssssssssssssssssssssssssssssssssssss
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --ignore-scripts
+      - run: node tests/postgres.integration.test.js
