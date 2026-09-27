@@ -23,6 +23,33 @@ const Orchestrator=require("../orchestrator.js");
  executed=await executor({type:"unsupported.action"});
  assert.equal(executed.ok,false);
 
+ const calls=[];
+ const expanded=createActionExecutor({
+  calendar:{
+   createEvent:async x=>{calls.push(["calendar.create",x]);return {ok:true,live:true}},
+   updateEvent:async x=>{calls.push(["calendar.update",x]);return {ok:true,live:true}},
+   deleteEvent:async x=>{calls.push(["calendar.delete",x]);return {ok:true,live:true}}
+  },
+  push:{send:async x=>{calls.push(["push.send",x]);return {ok:true,live:true}}},
+  slack:{postMessage:async x=>{calls.push(["slack.send",x]);return {ok:true,live:true}}},
+  microsoft365:{sendMail:async x=>{calls.push(["microsoft.email.send",x]);return {ok:true,live:true}}},
+  whatsapp:{sendText:async x=>{calls.push(["whatsapp.send",x]);return {ok:true,live:true}}},
+  homeAssistant:{service:async x=>{calls.push(["home.service",x]);return {ok:true,live:true}}},
+  spotify:{play:async x=>{calls.push(["spotify.play",x]);return {ok:true,live:true}}},
+  twilio:{sendSms:async x=>{calls.push(["sms.send",x]);return {ok:true,live:true}},placeCall:async()=>({ok:true,live:true})}
+ });
+ assert.equal((await expanded({type:"calendar.create",payload:{event:{summary:"Meeting"}}})).ok,true);
+ assert.equal((await expanded({type:"calendar.update",payload:{eventId:"e1",event:{summary:"Updated"}}})).ok,true);
+ assert.equal((await expanded({type:"calendar.delete",payload:{eventId:"e1"}})).ok,true);
+ assert.equal((await expanded({type:"push.send",payload:{deviceToken:"d",title:"Nikky",message:"Go"}})).ok,true);
+ assert.equal((await expanded({type:"slack.send",payload:{channel:"C1",message:"hello"}})).ok,true);
+ assert.equal((await expanded({type:"microsoft.email.send",payload:{recipient:"a@example.com",subject:"Hi",message:"Body"}})).ok,true);
+ assert.equal((await expanded({type:"whatsapp.send",payload:{recipient:"+1",message:"hello"}})).ok,true);
+ assert.equal((await expanded({type:"home.service",payload:{domain:"light",service:"turn_on",data:{entity_id:"light.office"}}})).ok,true);
+ assert.equal((await expanded({type:"spotify.play",payload:{uris:["spotify:track:1"]}})).ok,true);
+ assert.equal((await expanded({type:"sms.send",payload:{recipient:"+1555",message:"payload aliases"}})).ok,true);
+ assert.ok(calls.length>=10);
+
  let clock=1000, executions=0;
  const approvalQueue=[],approvalAudit=[];
  const approvalOrchestrator=Orchestrator.create({approvalQueue,auditLog:approvalAudit,now:()=>clock,approvalTtlMs:100,executor:async()=>{executions++;return {ok:true,live:true}}});
