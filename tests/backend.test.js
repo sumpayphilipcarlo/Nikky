@@ -38,18 +38,29 @@ const Orchestrator=require("../orchestrator.js");
  }});
  runtime.memory.put({id:"pref1",type:"preference",value:{arrivalBuffer:15}});
  assert.equal(runtime.memory.get("pref1").value.arrivalBuffer,15);
- const proposed=await runtime.propose({type:"email.send",title:"Test email"});
+ const proposed=await runtime.propose({type:"email.send",title:"Test email",idempotencyKey:"email-test-1"});
  assert.equal(proposed.result.status,"approval_required");
  assert.equal(runtime.approvals.length,1);
  const rejected=runtime.reject(runtime.approvals[0].id);
  assert.equal(rejected.status,"rejected");
- const sendProposal=await runtime.propose({type:"sms.send",title:"Approved SMS",to:"+15550000000",body:"On my way"});
+ const sendProposal=await runtime.propose({type:"sms.send",title:"Approved SMS",to:"+15550000000",body:"On my way",idempotencyKey:"sms-approved-1"});
  assert.equal(sendProposal.result.status,"approval_required");
  const approved=await runtime.approve(sendProposal.result.item.id);
  assert.equal(approved.status,"executed");
  assert.equal(approved.result.live,true);
  assert.ok(runtime.audit.some(e=>e.decision==="approved"));
  assert.ok(runtime.audit.some(e=>e.decision==="executed"));
+ const duplicateProposal=await runtime.propose({type:"sms.send",title:"Duplicate guard",to:"+15550000000",body:"Once",idempotencyKey:"once-only"});
+ const firstDuplicate=await runtime.approve(duplicateProposal.result.item.id);
+ assert.equal(firstDuplicate.status,"executed");
+ const duplicateProposal2=await runtime.propose({type:"sms.send",title:"Duplicate guard",to:"+15550000000",body:"Once",idempotencyKey:"once-only"});
+ const secondDuplicate=await runtime.approve(duplicateProposal2.result.item.id);
+ assert.equal(secondDuplicate.status,"executed");
+ assert.equal(secondDuplicate.result.deduplicated,true);
+ const missingKey=await runtime.propose({type:"sms.send",title:"No key",to:"+15550000000",body:"blocked"});
+ const missingKeyResult=await runtime.approve(missingKey.result.item.id);
+ assert.equal(missingKeyResult.status,"execution_failed");
+ assert.match(missingKeyResult.result.reason,/idempotency key/);
 
  const server=createServer();
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -75,7 +86,7 @@ const Orchestrator=require("../orchestrator.js");
  res=await fetch(base+"/v1/actions/propose",{
    method:"POST",
    headers:{"authorization":"Bearer test-token","content-type":"application/json"},
-   body:JSON.stringify({type:"sms.send",title:"Delay notice"})
+   body:JSON.stringify({type:"sms.send",title:"Delay notice",idempotencyKey:"server-sms-1"})
  });
  assert.equal(res.status,200);
  body=await res.json();
