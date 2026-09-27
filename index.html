@@ -13,7 +13,7 @@ button,input,textarea,select{font:inherit}.app{display:grid;grid-template-column
 .brand{display:flex;gap:10px;align-items:center}.logo{width:42px;height:42px;border-radius:14px;background:#fff;color:#111827;display:grid;place-items:center;font-weight:900}.brand span{display:block;color:#9ca3af;font-size:12px}
 nav{display:grid;gap:7px}.nav{border:0;background:transparent;color:#d1d5db;text-align:left;padding:11px 13px;border-radius:11px}.nav.active,.nav:hover{background:#1f2937;color:#fff}
 main{padding:30px}.view{display:none}.view.active{display:block}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:22px}.eyebrow{font-size:11px;letter-spacing:.14em;color:var(--accent);font-weight:900}.muted{color:var(--muted)}h1{font-size:34px;margin:4px 0 7px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px}.hero{grid-column:1/-1;background:linear-gradient(135deg,#fff,#eef2ff)}
-.primary,.secondary,.danger{border:0;border-radius:11px;padding:10px 14px;font-weight:800;cursor:pointer}.primary{background:#111827;color:#fff}.secondary{background:#eef2f7}.danger{background:#fee2e2;color:#b91c1c}
+:focus-visible{outline:3px solid #6366f1;outline-offset:2px}.primary,.secondary,.danger{border:0;border-radius:11px;padding:10px 14px;font-weight:800;cursor:pointer}.primary{background:#111827;color:#fff}.secondary{background:#eef2f7}.danger{background:#fee2e2;color:#b91c1c}
 input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:11px;background:#fff}textarea{min-height:100px}.row{display:flex;gap:8px}.list{display:grid;gap:9px}.item{border:1px solid var(--line);border-radius:13px;padding:12px;background:#fff}.small{font-size:12px}.mic{width:54px;height:54px;border-radius:50%;border:0;background:#111827;color:#fff;font-size:22px}.orb{width:108px;height:108px;border-radius:50%;border:0;background:#111827;color:#fff;font-size:38px;box-shadow:0 0 0 12px #eef2ff}.voice{text-align:center;max-width:760px;margin:auto;padding:42px 24px}.hidden{display:none}.skills{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.skill{background:#fff;border:1px solid var(--line);border-radius:17px;padding:16px}.badge{float:right;background:#374151;border-radius:999px;padding:1px 7px;font-size:11px}
 @media(max-width:850px){.app{grid-template-columns:1fr}.side{position:fixed;z-index:10;left:0;right:0;bottom:0;top:auto;height:auto;padding:8px}.brand{display:none}nav{display:flex;overflow:auto}.nav{white-space:nowrap;font-size:12px}main{padding:20px 14px 80px}.grid,.skills{grid-template-columns:1fr}}
 </style>
@@ -37,11 +37,11 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 </aside>
 <main>
 <section id="view-today" class="view active">
-  <div class="top"><div><div class="eyebrow">NIKKY DAILY BRIEF</div><h1 id="greeting">Good day.</h1><p class="muted">Nikky watches what matters before you need to ask.</p></div><button class="mic" id="micTop">🎙</button></div>
+  <div class="top"><div><div class="eyebrow">NIKKY DAILY BRIEF</div><h1 id="greeting">Good day.</h1><p class="muted">Nikky watches what matters before you need to ask.</p></div><button class="mic" id="micTop" aria-label="Talk to Nikky">🎙</button></div>
   <div class="grid">
-    <article class="card"><div class="eyebrow">NIKKY CORE</div><h3>Backend status</h3><div id="coreStatus" class="muted">Checking secure session…</div><button class="secondary" id="refreshCore" style="margin-top:10px">Refresh</button></article>
+    <article class="card"><div class="eyebrow">NIKKY CORE</div><h3>Backend status</h3><div id="coreStatus" class="muted" role="status" aria-live="polite">Checking secure session…</div><button class="secondary" id="refreshCore" style="margin-top:10px">Refresh</button></article>
     <article class="card hero"><div class="eyebrow">NEXT IMPORTANT THING</div><h2 id="nextThing">Set your routine</h2><p class="muted" id="nextDetail">Add your normal workday and commute.</p></article>
-    <article class="card"><div class="eyebrow">WEATHER</div><h3>Before you leave</h3><div id="weather">Enable location to check weather.</div><button class="secondary" id="weatherBtn">Check weather</button></article>
+    <article class="card"><div class="eyebrow">WEATHER</div><h3>Before you leave</h3><div id="weather" role="status" aria-live="polite">Enable location to check weather.</div><button class="secondary" id="weatherBtn">Check weather</button></article>
     <article class="card"><div class="eyebrow">COMMUTE</div><h3>Departure intelligence</h3><div id="commute">No routine yet.</div></article>
     <article class="card"><div class="eyebrow">LIFE EVENTS</div><h3>Prepare early</h3><div id="eventPreview" class="list"></div></article>
     <article class="card"><div class="eyebrow">NIKKY NOTICED</div><h3>Proactive suggestions</h3><div id="proactiveList" class="list"></div></article>
@@ -52,9 +52,9 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 <section id="view-voice" class="view">
   <div class="top"><div><div class="eyebrow">VOICE FIRST</div><h1>Say “Hey Nikky…”</h1><p class="muted">Natural language, no command syntax.</p></div></div>
   <article class="card voice">
-    <button class="orb" id="orb">🎙</button><h2 id="voiceState">Tap to speak</h2><p id="transcript" class="muted">“Hey Nikky, when should I leave?”</p>
+    <button class="orb" id="orb" aria-label="Start voice input">🎙</button><h2 id="voiceState">Tap to speak</h2><p id="transcript" class="muted">“Hey Nikky, when should I leave?”</p>
     <div class="row"><input id="cmd" placeholder="Or type naturally…"/><button class="primary" id="run">Run</button></div>
-    <div id="result" class="item hidden" style="margin-top:16px;text-align:left"></div>
+    <div id="result" class="item hidden" role="status" aria-live="polite" style="margin-top:16px;text-align:left"></div>
   </article>
 </section>
 
@@ -77,10 +77,10 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
   <div class="top"><div><div class="eyebrow">LIFE EVENTS</div><h1>Remember what matters</h1></div></div>
   <div class="grid">
     <article class="card">
-      <input id="eventTitle" placeholder="Wedding anniversary"/>
-      <select id="eventType"><option>Anniversary</option><option>Birthday</option><option>Trip</option><option>Appointment</option><option>Renewal</option><option>Other</option></select>
-      <input type="date" id="eventDate"/>
-      <textarea id="eventNotes" placeholder="Gift, restaurant, travel details…"></textarea>
+      <input id="eventTitle" aria-label="Life event title" placeholder="Wedding anniversary"/>
+      <select id="eventType" aria-label="Life event type"><option>Anniversary</option><option>Birthday</option><option>Trip</option><option>Appointment</option><option>Renewal</option><option>Other</option></select>
+      <input type="date" id="eventDate" aria-label="Life event date"/>
+      <textarea id="eventNotes" aria-label="Life event notes" placeholder="Gift, restaurant, travel details…"></textarea>
       <button class="primary" id="saveEvent" style="width:100%">Save event</button>
     </article>
     <article class="card"><div id="eventsList" class="list"></div></article>
@@ -96,7 +96,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
   <div class="top"><div><div class="eyebrow">NOTES & MEMORY</div><h1>What Nikky remembers</h1></div></div>
   <div class="grid">
     <article class="card"><div id="notesList" class="list"></div></article>
-    <article class="card"><input id="noteTitle" placeholder="Title"/><textarea id="noteBody" placeholder="What should Nikky remember?"></textarea><div class="row"><button class="primary" id="saveNote">Save</button><button class="danger" id="deleteNote">Delete</button></div></article>
+    <article class="card"><input id="noteTitle" aria-label="Note title" placeholder="Title"/><textarea id="noteBody" aria-label="Note body" placeholder="What should Nikky remember?"></textarea><div class="row"><button class="primary" id="saveNote">Save</button><button class="danger" id="deleteNote">Delete</button></div></article>
   </div>
 </section>
 
