@@ -1,6 +1,10 @@
 const crypto=require("crypto");
 function hash(input){return crypto.createHash("sha256").update(String(input)).digest("hex")}
-function canonical(entry){return JSON.stringify(entry,Object.keys(entry).sort())}
+function canonical(value){
+ if(value===null||typeof value!=="object")return JSON.stringify(value);
+ if(Array.isArray(value))return "["+value.map(canonical).join(",")+"]";
+ return "{"+Object.keys(value).sort().map(k=>JSON.stringify(k)+":"+canonical(value[k])).join(",")+"}";
+}
 function createAuditLedger(){
  const entries=[];
  function append(event){
