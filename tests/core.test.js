@@ -1,6 +1,6 @@
 const assert=require("assert");
 const {createAuditLedger}=require("../core/audit-ledger.js");
-const {createPolicyStore}=require("../core/policy.js");
+const {createPolicyEngine}=require("../core/policy.js");
 const {createProviderHealth}=require("../core/provider-health.js");
 const {createPermissionEnforcer}=require("../core/permissions.js");
 const {createJsonStore}=require("../server/persistence.js");
@@ -652,10 +652,10 @@ const GoogleCalendar=require("../google-calendar.js");
   ledger.entries[0].metadata.nested.x=2;
   assert.equal(ledger.verify().ok,false);
 
-  const scoped=createPolicyStore();
-  scoped.upsert({id:"spouse-delay",actionType:"sms.send",effect:"auto",priority:10,conditions:{recipient:"+15550001"}});
-  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550001"}},{}).effect,"auto");
-  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550002"}},{}).matched,false);
+  const scoped=createPolicyEngine();
+  scoped.add({id:"spouse-delay",actionType:"sms.send",effect:"allow",priority:10,recipient:"+15550001"});
+  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550001"}},{}).effect,"allow");
+  assert.equal(scoped.evaluate({type:"sms.send",payload:{recipient:"+15550002"}},{}).ruleId,null);
 
   const healthMonitor=createProviderHealth({now:()=>1000});
   assert.equal(healthMonitor.report("gmail",{ok:true,latencyMs:100}).status,"healthy");
