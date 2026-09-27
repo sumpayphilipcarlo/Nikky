@@ -7,6 +7,7 @@ const {createScheduler}=require("../core/scheduler.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
 const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
+const {createIdempotencyStore}=require("../core/idempotency.js");
 const {createGmailAdapter}=require("../providers/gmail.js");
 const {createTwilioAdapter}=require("../providers/twilio.js");
 
@@ -35,10 +36,18 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
  const metrics=createMetrics();
+ const idempotency=createIdempotencyStore({now});
  const approvals=[],audit=[];
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
  const twilio=providers.twilio||createTwilioAdapter({accountSid:env.TWILIO_ACCOUNT_SID,authToken:env.TWILIO_AUTH_TOKEN,fromNumber:env.TWILIO_FROM_NUMBER,fetchFn:providers.fetchFn});
- const executor=createActionExecutor({gmail,twilio});
+ const providerExecutor=createActionExecutor({gmail,twilio});
+ const executor=async action=>{
+  const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
+  if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
+  const run=await idempotency.run(key,()=>providerExecutor(action));
+  if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
+  return {...run.result,deduplicated:run.deduplicated};
+ };
  const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
  const workflows=new Map();
 
@@ -75,6 +84,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
- return {memory,identity,scheduler,metrics,approvals,audit,workflows,propose,approve,reject};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,workflows,propose,approve,reject};
 }
 module.exports={createRuntime,createActionExecutor};
