@@ -32,16 +32,24 @@ const Orchestrator=require("../orchestrator.js");
  assert.notEqual(replay.status,"executed");
  assert.equal(executions,0);
 
- const runtime=createRuntime({providers:{
+ const persisted=[];
+ const workflowRepository={
+  saveWorkflow:async(userId,w)=>{persisted.push({userId,w:JSON.parse(JSON.stringify(w))});return w},
+  listWorkflows:async()=>[{id:"restored-1",type:"sms.send",state:"failed",context:{},steps:[],history:[],attempt:1,created_at:new Date().toISOString(),updated_at:new Date().toISOString()}]
+ };
+ const runtime=createRuntime({workflowRepository,userId:"user-1",providers:{
   gmail:{send:async()=>({ok:true,live:true,source:"gmail-test",message:{id:"m1"}})},
   twilio:{sendSms:async()=>({ok:true,live:true,source:"twilio-test",data:{sid:"SM1"}}),placeCall:async()=>({ok:true,live:true,source:"twilio-test",data:{sid:"CA1"}})}
  }});
  runtime.memory.put({id:"pref1",type:"preference",value:{arrivalBuffer:15}});
  assert.equal(runtime.memory.get("pref1").value.arrivalBuffer,15);
+ const restored=await runtime.restoreWorkflows();
+ assert.ok(restored.some(w=>w.id==="restored-1"));
  const proposed=await runtime.propose({type:"email.send",title:"Test email",idempotencyKey:"email-test-1"});
  assert.equal(proposed.result.status,"approval_required");
+ assert.ok(persisted.some(x=>x.userId==="user-1"&&x.w.state==="awaiting_approval"));
  assert.equal(runtime.approvals.length,1);
- const rejected=runtime.reject(runtime.approvals[0].id);
+ const rejected=await runtime.reject(runtime.approvals[0].id);
  assert.equal(rejected.status,"rejected");
  const sendProposal=await runtime.propose({type:"sms.send",title:"Approved SMS",to:"+15550000000",body:"On my way",idempotencyKey:"sms-approved-1"});
  assert.equal(sendProposal.result.status,"approval_required");
