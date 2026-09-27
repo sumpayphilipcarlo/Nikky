@@ -1,4 +1,11 @@
 const assert=require("assert");
+const Workflow=require("../core/workflow-engine.js");
+const {createIdempotencyStore}=require("../core/idempotency.js");
+const Risk=require("../core/risk.js");
+const {createSkillRegistry}=require("../core/skills.js");
+const {createDeviceRegistry}=require("../core/devices.js");
+const Recovery=require("../core/recovery.js");
+
 const Authority=require("../authority.js");
 global.NikkyAuthority=Authority;
 const Orchestrator=require("../orchestrator.js");
@@ -131,6 +138,47 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(unauthorized.ok,false);
   assert.equal(unauthorized.live,false);
   assert.equal(tokenCleared,true);
+
+  const wf=Workflow.createWorkflow({type:"meeting-trip"});
+  Workflow.transition(wf,Workflow.STATES.PLANNED,"plan created");
+  Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"external message proposed");
+  Workflow.transition(wf,Workflow.STATES.EXECUTING,"approved");
+  Workflow.transition(wf,Workflow.STATES.COMPLETED,"done");
+  assert.equal(wf.state,Workflow.STATES.COMPLETED);
+  assert.equal(wf.attempt,1);
+  assert.throws(()=>Workflow.transition(wf,Workflow.STATES.EXECUTING));
+
+  const idem=createIdempotencyStore();
+  let sideEffects=0;
+  const first=await idem.run("email:abc",async()=>++sideEffects);
+  const second=await idem.run("email:abc",async()=>++sideEffects);
+  assert.equal(first.deduplicated,false);
+  assert.equal(second.deduplicated,true);
+  assert.equal(sideEffects,1);
+
+  assert.equal(Risk.classify({type:"weather.read"}).level,Risk.LEVELS.LOW);
+  assert.equal(Risk.classify({type:"email.send"}).requiresApproval,true);
+  assert.equal(Risk.classify({type:"financial.transfer"}).level,Risk.LEVELS.CRITICAL);
+
+  const skills=createSkillRegistry([{id:"calendar",name:"Calendar",permissions:["calendar.read"]}]);
+  assert.equal(skills.can("calendar","calendar.read"),true);
+  assert.equal(skills.can("calendar","calendar.write"),false);
+  skills.setProviderState("calendar",{connected:true});
+  assert.equal(skills.get("calendar").providerState.connected,true);
+
+  const devices=createDeviceRegistry([
+    {id:"phone",online:true,presence:10,channels:["push"],capabilities:["notify"]},
+    {id:"laptop",online:true,presence:3,channels:["local"],capabilities:["notify"]}
+  ]);
+  assert.equal(devices.route({requiredCapability:"notify"})[0].deviceId,"phone");
+  devices.revoke("phone");
+  assert.equal(devices.route({requiredCapability:"notify"})[0].deviceId,"laptop");
+
+  let tries=0;
+  const retried=await Recovery.retry(async()=>{tries++;if(tries<2)throw new Error("temporary");return "ok"},{maxAttempts:3});
+  assert.equal(retried.ok,true);
+  assert.equal(retried.attempt,2);
+  assert.equal(Recovery.backoff(3,{baseMs:100,maxMs:1000}),400);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
