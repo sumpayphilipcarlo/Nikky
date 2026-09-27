@@ -44,7 +44,6 @@ const WhatsApp=require("../providers/whatsapp.js");
 const Policy=require("../core/policy.js");
 const Approval=require("../core/approval.js");
 const {createSkillSandbox}=require("../core/sandbox.js");
-const {createProviderHealth}=require("../core/provider-health.js");
 const {createAuditChain}=require("../core/audit-chain.js");
 const Secrets=require("../core/secrets.js");
 
