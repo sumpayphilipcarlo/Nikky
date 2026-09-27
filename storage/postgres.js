@@ -40,10 +40,37 @@ function createPostgresRepository(pool){
   const r=await pool.query("UPDATE jobs SET last_run_at=NOW(),next_run_at=$2,last_status=$3,last_error=$4 WHERE id=$1 RETURNING *",[id,nextRunAt,lastStatus,lastError]);
   return r.rows[0];
  }
+
+ async function saveProviderConnection(userId,connection){
+  const r=await pool.query(
+   `INSERT INTO provider_connections(id,user_id,provider,status,encrypted_credentials,scopes,last_health,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,NOW())
+    ON CONFLICT(user_id,provider) DO UPDATE SET status=EXCLUDED.status,encrypted_credentials=EXCLUDED.encrypted_credentials,scopes=EXCLUDED.scopes,last_health=EXCLUDED.last_health,updated_at=NOW()
+    RETURNING *`,
+   [connection.id,userId,connection.provider,connection.status||"connected",JSON.stringify(connection.encryptedCredentials||null),JSON.stringify(connection.scopes||[]),JSON.stringify(connection.lastHealth||null)]);
+  return r.rows[0];
+ }
+ async function getProviderConnection(userId,provider){
+  const r=await pool.query("SELECT * FROM provider_connections WHERE user_id=$1 AND provider=$2",[userId,provider]);
+  return r.rows[0]||null;
+ }
+ async function listProviderConnections(userId){
+  const r=await pool.query("SELECT id,provider,status,scopes,last_health,updated_at FROM provider_connections WHERE user_id=$1 ORDER BY provider",[userId]);
+  return r.rows;
+ }
+ async function deleteProviderConnection(userId,provider){
+  const r=await pool.query("DELETE FROM provider_connections WHERE user_id=$1 AND provider=$2",[userId,provider]);
+  return r.rowCount>0;
+ }
+ async function updateProviderHealth(userId,provider,health){
+  const r=await pool.query("UPDATE provider_connections SET last_health=$3,updated_at=NOW() WHERE user_id=$1 AND provider=$2 RETURNING *",[userId,provider,JSON.stringify(health||{})]);
+  return r.rows[0]||null;
+ }
+
  async function appendFeedback(userId,{predictionKey,outcome,context}){
   const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
- return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,appendFeedback,pool};
+ return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,appendFeedback,pool};
 }
 module.exports={createPostgresRepository};
