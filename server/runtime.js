@@ -13,23 +13,58 @@ const {createPolicyEngine,EFFECTS}=require("../core/policy.js");
 const {createIdempotencyStore}=require("../core/idempotency.js");
 const {createGmailAdapter}=require("../providers/gmail.js");
 const {createTwilioAdapter}=require("../providers/twilio.js");
+const {createGoogleCalendarApiAdapter}=require("../providers/google-calendar-api.js");
+const {createFcmAdapter}=require("../providers/push.js");
+const {createSlackAdapter}=require("../providers/slack.js");
+const {createMicrosoft365Adapter}=require("../providers/microsoft365.js");
+const {createWhatsAppAdapter}=require("../providers/whatsapp.js");
+const {createHomeAssistantAdapter}=require("../providers/home-assistant.js");
+const {createSpotifyAdapter}=require("../providers/spotify.js");
 
-function createActionExecutor({gmail,twilio}={}){
+function payload(action){return action?.payload&&typeof action.payload==="object"?action.payload:{}}
+function field(action,name,...aliases){
+ const p=payload(action);
+ for(const key of [name,...aliases])if(action?.[key]!==undefined)return action[key];else if(p[key]!==undefined)return p[key];
+ return undefined;
+}
+function createActionExecutor({gmail,twilio,calendar,push,slack,microsoft365,whatsapp,homeAssistant,spotify,providerHealth}={}){
  const handlers={
-  "email.send":async action=>gmail?.send?gmail.send({raw:action.raw,interactive:action.interactive!==false}):({ok:false,live:false,reason:"Gmail provider is not configured"}),
-  "sms.send":async action=>twilio?.sendSms?twilio.sendSms({to:action.to,body:action.body}):({ok:false,live:false,reason:"Twilio provider is not configured"}),
-  "call.place":async action=>twilio?.placeCall?twilio.placeCall({to:action.to,twiml:action.twiml}):({ok:false,live:false,reason:"Twilio provider is not configured"})
+  "email.send":async action=>gmail?.send?gmail.send({raw:field(action,"raw"),interactive:action.interactive!==false}):({ok:false,live:false,reason:"Gmail provider is not configured"}),
+  "sms.send":async action=>twilio?.sendSms?twilio.sendSms({to:field(action,"to","recipient"),body:field(action,"body","message")}):({ok:false,live:false,reason:"Twilio provider is not configured"}),
+  "call.place":async action=>twilio?.placeCall?twilio.placeCall({to:field(action,"to","recipient"),twiml:field(action,"twiml")}):({ok:false,live:false,reason:"Twilio provider is not configured"}),
+  "calendar.create":async action=>calendar?.createEvent?calendar.createEvent({event:field(action,"event")}):({ok:false,live:false,reason:"Calendar provider is not configured"}),
+  "calendar.update":async action=>calendar?.updateEvent?calendar.updateEvent({eventId:field(action,"eventId"),event:field(action,"event")}):({ok:false,live:false,reason:"Calendar provider is not configured"}),
+  "calendar.delete":async action=>calendar?.deleteEvent?calendar.deleteEvent({eventId:field(action,"eventId")}):({ok:false,live:false,reason:"Calendar provider is not configured"}),
+  "push.send":async action=>push?.send?push.send({deviceToken:field(action,"deviceToken"),title:field(action,"title"),body:field(action,"body","message"),data:field(action,"data")||{}}):({ok:false,live:false,reason:"Push provider is not configured"}),
+  "slack.send":async action=>slack?.postMessage?slack.postMessage({channel:field(action,"channel"),text:field(action,"text","message"),threadTs:field(action,"threadTs")}):({ok:false,live:false,reason:"Slack provider is not configured"}),
+  "microsoft.email.send":async action=>microsoft365?.sendMail?microsoft365.sendMail({subject:field(action,"subject"),body:field(action,"body","message"),to:field(action,"to","recipient")}):({ok:false,live:false,reason:"Microsoft 365 provider is not configured"}),
+  "whatsapp.send":async action=>whatsapp?.sendText?whatsapp.sendText({to:field(action,"to","recipient"),text:field(action,"text","message")}):({ok:false,live:false,reason:"WhatsApp provider is not configured"}),
+  "home.service":async action=>homeAssistant?.service?homeAssistant.service({domain:field(action,"domain"),service:field(action,"service"),data:field(action,"data")||{}}):({ok:false,live:false,reason:"Home Assistant provider is not configured"}),
+  "spotify.play":async action=>spotify?.play?spotify.play({deviceId:field(action,"deviceId"),uris:field(action,"uris"),contextUri:field(action,"contextUri")}):({ok:false,live:false,reason:"Spotify provider is not configured"})
  };
  return async function execute(action){
   const handler=handlers[action?.type];
   if(!handler)return {ok:false,live:false,reason:"No backend provider executor configured for "+(action?.type||"unknown")};
+  const providerId={
+   "email.send":"gmail","sms.send":"twilio","call.place":"twilio",
+   "calendar.create":"google-calendar","calendar.update":"google-calendar","calendar.delete":"google-calendar",
+   "push.send":"fcm","slack.send":"slack","microsoft.email.send":"microsoft365",
+   "whatsapp.send":"whatsapp","home.service":"home-assistant","spotify.play":"spotify"
+  }[action.type]||action.type;
+  if(providerHealth&&!providerHealth.canCall(providerId))return {ok:false,live:false,reason:"Provider circuit is open for "+providerId};
+  const started=Date.now();
   try{
    const result=await handler(action);
+   if(providerHealth){
+    if(result?.ok===true&&result?.live===true)providerHealth.success(providerId);
+    else providerHealth.failure(providerId,new Error(result?.reason||"provider execution failed"));
+   }
    if(!result||result.ok!==true)return {ok:false,live:false,reason:result?.reason||"Provider did not confirm execution",providerResult:result||null};
    if(result.live!==true)return {ok:false,live:false,reason:"Provider did not confirm live execution",providerResult:result};
    return result;
   }catch(error){
-   return {ok:false,live:false,reason:"Provider execution error: "+(error?.message||String(error))};
+   providerHealth?.failure?.(providerId,error);
+   return {ok:false,live:false,reason:"Provider execution error: "+(error?.message||String(error)),latencyMs:Date.now()-started};
   }
  };
 }
@@ -46,7 +81,14 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const approvals=[],audit=[];
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
  const twilio=providers.twilio||createTwilioAdapter({accountSid:env.TWILIO_ACCOUNT_SID,authToken:env.TWILIO_AUTH_TOKEN,fromNumber:env.TWILIO_FROM_NUMBER,fetchFn:providers.fetchFn});
- const providerExecutor=createActionExecutor({gmail,twilio});
+ const calendar=providers.calendar||createGoogleCalendarApiAdapter({tokenProvider:providers.googleTokenProvider,fetchFn:providers.fetchFn,calendarId:providers.calendarId||"primary"});
+ const push=providers.push||createFcmAdapter({projectId:env.FCM_PROJECT_ID,tokenProvider:providers.fcmTokenProvider,fetchFn:providers.fetchFn});
+ const slack=providers.slack||createSlackAdapter({botToken:env.SLACK_BOT_TOKEN,fetchFn:providers.fetchFn});
+ const microsoft365=providers.microsoft365||createMicrosoft365Adapter({tokenProvider:providers.microsoftTokenProvider,fetchFn:providers.fetchFn});
+ const whatsapp=providers.whatsapp||createWhatsAppAdapter({accessToken:env.WHATSAPP_ACCESS_TOKEN,phoneNumberId:env.WHATSAPP_PHONE_NUMBER_ID,fetchFn:providers.fetchFn});
+ const homeAssistant=providers.homeAssistant||createHomeAssistantAdapter({baseUrl:env.HOME_ASSISTANT_URL,token:env.HOME_ASSISTANT_TOKEN,fetchFn:providers.fetchFn});
+ const spotify=providers.spotify||createSpotifyAdapter({tokenProvider:providers.spotifyTokenProvider,fetchFn:providers.fetchFn});
+ const providerExecutor=createActionExecutor({gmail,twilio,calendar,push,slack,microsoft365,whatsapp,homeAssistant,spotify,providerHealth});
  const executor=async action=>{
   const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
   if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
