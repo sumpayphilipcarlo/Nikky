@@ -1,0 +1,18 @@
+{
+  "platform": "android",
+  "target": "React Native or Capacitor native shell",
+  "capabilities": [
+    "notifications",
+    "background-jobs",
+    "wake-word",
+    "speech-input",
+    "calls",
+    "sms",
+    "contacts",
+    "geolocation",
+    "files",
+    "push"
+  ],
+  "status": "scaffold",
+  "notes": "Requires Android project, runtime permissions, notification channel, foreground/background service policy, signing, and store distribution."
+}

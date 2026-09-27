@@ -1,4 +1,9 @@
 const assert=require("assert");
+const Platform=require("../core/platform.js");
+const {createPresenceModel}=require("../core/presence.js");
+const {createEscalation}=require("../core/escalation.js");
+const Voice=require("../core/voice.js");
+
 const Files=require("../core/files.js");
 const Extractors=require("../core/extractors.js");
 const Documents=require("../core/document-intelligence.js");
@@ -501,6 +506,38 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(docResult.action.type,"email.send");
   assert.equal(docResult.proposal.status,"approval_required");
   assert.equal(docProposals.length,1);
+
+  const best=Platform.bestDevice([
+    {id:"web",platform:"web",presence:2},
+    {id:"phone",platform:"android",presence:10}
+  ],["background-jobs"]);
+  assert.equal(best.id,"phone");
+
+  let presenceNow=100000;
+  const presence=createPresenceModel({now:()=>presenceNow,activeWindowMs:1000});
+  presence.update("phone",{active:true,lastInputAt:presenceNow});
+  assert.equal(presence.score("phone"),10);
+  presenceNow+=4000;
+  assert.equal(presence.inactiveEverywhere(),true);
+
+  const esc=createEscalation();
+  const escPlan=esc.plan({priority:99,minutesUntilDeadline:8,userInactive:true,quietHours:true});
+  assert.ok(escPlan.some(x=>x.level==="wake"));
+  assert.equal(esc.next(escPlan,[{level:escPlan[0].level}]).level,escPlan[1].level);
+
+  const voice=Voice.createVoiceSession({
+    speakerVerifier:async()=>({verified:true,confidence:.95}),
+    transcriber:async()=>({text:"Hey Nikky"}),
+    synthesizer:async text=>({ok:true,text})
+  });
+  assert.equal((await voice.verify(Buffer.from("sample"))).verified,true);
+  assert.equal((await voice.transcribe(Buffer.from("audio"))).text,"Hey Nikky");
+  assert.equal((await voice.speak("Hello")).ok,true);
+  assert.equal(voice.turns.length,2);
+
+  const wake=Voice.createWakeWordController();
+  assert.equal((await wake.start()).ok,false);
+  assert.equal(wake.isListening(),false);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
