@@ -31,7 +31,7 @@ function createActionExecutor({gmail,twilio}={}){
  };
 }
 
-function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
+function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflowRepository=null,userId="local-user"}={}){
  const memory=createMemoryStore({now:()=>new Date(now())});
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
@@ -50,17 +50,20 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
  };
  const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
  const workflows=new Map();
+ async function persistWorkflow(wf){if(workflowRepository?.saveWorkflow)await workflowRepository.saveWorkflow(userId,wf);return wf;}
 
  async function propose(action){
   const risk=Risk.classify(action);
   const wf=Workflow.createWorkflow({type:action.type,context:{action,risk}});
   Workflow.transition(wf,Workflow.STATES.PLANNED,"action structured");
   workflows.set(wf.id,wf);
+  await persistWorkflow(wf);
   const result=await orchestrator.propose(action);
   if(result.status==="approval_required") Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"user approval required");
   else if(result.status==="denied") Workflow.transition(wf,Workflow.STATES.CANCELLED,"authority denied action");
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
   else if(result.status==="execution_failed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.FAILED,"executor failed");}
+  await persistWorkflow(wf);
   recordAction(metrics,{decision:result.verdict?.level,status:result.status});
   return {workflow:wf,result,risk};
  }
@@ -73,17 +76,24 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
    if(result.status==="executed")Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");
    else if(result.status==="execution_failed"||result.status==="approved_no_executor")Workflow.transition(wf,Workflow.STATES.FAILED,result.status);
   }
+  if(wf)await persistWorkflow(wf);
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
  }
- function reject(id){
+ async function reject(id){
   const item=approvals.find(a=>a.id===id);
   const result=orchestrator.reject(id);
   const wf=item?[...workflows.values()].find(w=>w.context?.action===item.action||w.context?.action?.type===item.action?.type&&w.state===Workflow.STATES.AWAITING_APPROVAL):null;
-  if(wf)Workflow.transition(wf,Workflow.STATES.CANCELLED,"user rejected");
+  if(wf){Workflow.transition(wf,Workflow.STATES.CANCELLED,"user rejected");await persistWorkflow(wf);}
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,workflows,propose,approve,reject};
+ async function restoreWorkflows({state,limit=200}={}){
+  if(!workflowRepository?.listWorkflows)return [];
+  const rows=await workflowRepository.listWorkflows(userId,{state,limit});
+  for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
+  return [...workflows.values()];
+ }
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
