@@ -9,7 +9,7 @@ function daysUntil(date,now=new Date()){const a=new Date(date+"T00:00:00"),b=new
 function preparation(event,now=new Date()){
  const days=daysUntil(event.date,now);if(days<0)return null;
  const windows=WINDOWS[event.type]||[{days:7,stage:"prepare"},{days:0,stage:"day-of"}];
- const applicable=[...windows].sort((a,b)=>b.days-a.days).find(w=>days<=w.days);
+ const applicable=[...windows].sort((a,b)=>a.days-b.days).find(w=>days<=w.days);
  if(!applicable)return null;
  const suggestions={
   "awareness":["Review plans and availability"],
