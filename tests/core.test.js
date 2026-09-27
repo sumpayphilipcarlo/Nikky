@@ -1,4 +1,7 @@
 const assert=require("assert");
+const {createRefreshTokenProvider}=require("../providers/oauth-refresh.js");
+const {createProviderCredentialVault}=require("../core/provider-credentials.js");
+
 const {createAuditLedger}=require("../core/audit-ledger.js");
 const {createPolicyEngine}=require("../core/policy.js");
 const {createProviderHealth}=require("../core/provider-health.js");
@@ -678,6 +681,33 @@ const GoogleCalendar=require("../google-calendar.js");
   const tampered=JSON.parse(fs.readFileSync(storePath,"utf8"));tampered.payload.data.workflows.w1.state="tampered";fs.writeFileSync(storePath,JSON.stringify(tampered));
   assert.throws(()=>createJsonStore({filePath:storePath}),/checksum mismatch/);
   fs.rmSync(tempDir,{recursive:true,force:true});
+
+  let oauthCalls=0,oauthNow=1000;
+  const refresh=createRefreshTokenProvider({
+    clientId:"client",clientSecret:"secret",refreshToken:"refresh",tokenUrl:"https://oauth.example/token",
+    now:()=>oauthNow,
+    fetchFn:async()=>{oauthCalls++;return {ok:true,status:200,json:async()=>({access_token:"access-"+oauthCalls,expires_in:3600,token_type:"Bearer"})}}
+  });
+  const tok1=await refresh.getToken(),tok2=await refresh.getToken();
+  assert.equal(tok1.ok,true);assert.equal(tok2.cached,true);assert.equal(oauthCalls,1);
+  oauthNow+=3600*1000;
+  const tok3=await refresh.getToken();assert.equal(tok3.ok,true);assert.equal(oauthCalls,2);
+
+  const providerRows=new Map();
+  const providerRepo={
+    saveProviderConnection:async(userId,row)=>{providerRows.set(row.provider,{...row,user_id:userId,encrypted_credentials:row.encryptedCredentials,scopes:row.scopes,last_health:row.lastHealth});return providerRows.get(row.provider)},
+    getProviderConnection:async(userId,provider)=>providerRows.get(provider)||null,
+    listProviderConnections:async()=>[...providerRows.values()],
+    deleteProviderConnection:async(userId,provider)=>providerRows.delete(provider),
+    updateProviderHealth:async(userId,provider,health)=>{const row=providerRows.get(provider);row.last_health=health;return row}
+  };
+  const vault=createProviderCredentialVault({repository:providerRepo,userId:"u1",keyMaterial:"k".repeat(32)});
+  await vault.save("google",{refreshToken:"super-secret",clientId:"cid"},{scopes:["calendar.readonly"]});
+  const loadedProvider=await vault.load("google");
+  assert.equal(loadedProvider.credentials.refreshToken,"super-secret");
+  const listedProviders=await vault.list();
+  assert.equal(listedProviders[0].provider,"google");
+  assert.equal(JSON.stringify(listedProviders).includes("super-secret"),false);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
