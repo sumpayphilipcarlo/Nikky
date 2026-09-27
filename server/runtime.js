@@ -7,17 +7,39 @@ const {createScheduler}=require("../core/scheduler.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
 const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
+const {createGmailAdapter}=require("../providers/gmail.js");
+const {createTwilioAdapter}=require("../providers/twilio.js");
 
-function createRuntime({now=()=>Date.now()}={}){
+function createActionExecutor({gmail,twilio}={}){
+ const handlers={
+  "email.send":async action=>gmail?.send?gmail.send({raw:action.raw,interactive:action.interactive!==false}):({ok:false,live:false,reason:"Gmail provider is not configured"}),
+  "sms.send":async action=>twilio?.sendSms?twilio.sendSms({to:action.to,body:action.body}):({ok:false,live:false,reason:"Twilio provider is not configured"}),
+  "call.place":async action=>twilio?.placeCall?twilio.placeCall({to:action.to,twiml:action.twiml}):({ok:false,live:false,reason:"Twilio provider is not configured"})
+ };
+ return async function execute(action){
+  const handler=handlers[action?.type];
+  if(!handler)return {ok:false,live:false,reason:"No backend provider executor configured for "+(action?.type||"unknown")};
+  try{
+   const result=await handler(action);
+   if(!result||result.ok!==true)return {ok:false,live:false,reason:result?.reason||"Provider did not confirm execution",providerResult:result||null};
+   if(result.live!==true)return {ok:false,live:false,reason:"Provider did not confirm live execution",providerResult:result};
+   return result;
+  }catch(error){
+   return {ok:false,live:false,reason:"Provider execution error: "+(error?.message||String(error))};
+  }
+ };
+}
+
+function createRuntime({now=()=>Date.now(),env=process.env,providers={}}={}){
  const memory=createMemoryStore({now:()=>new Date(now())});
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
  const metrics=createMetrics();
  const approvals=[],audit=[];
- const orchestrator=Orchestrator.create({
-  approvalQueue:approvals,auditLog:audit,
-  executor:async(action)=>({ok:false,reason:"No backend provider executor configured for "+action.type})
- });
+ const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
+ const twilio=providers.twilio||createTwilioAdapter({accountSid:env.TWILIO_ACCOUNT_SID,authToken:env.TWILIO_AUTH_TOKEN,fromNumber:env.TWILIO_FROM_NUMBER,fetchFn:providers.fetchFn});
+ const executor=createActionExecutor({gmail,twilio});
+ const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
  const workflows=new Map();
 
  async function propose(action){
@@ -55,4 +77,4 @@ function createRuntime({now=()=>Date.now()}={}){
  }
  return {memory,identity,scheduler,metrics,approvals,audit,workflows,propose,approve,reject};
 }
-module.exports={createRuntime};
+module.exports={createRuntime,createActionExecutor};
