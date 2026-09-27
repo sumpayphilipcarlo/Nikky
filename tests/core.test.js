@@ -1,4 +1,14 @@
 const assert=require("assert");
+const SkillSDK=require("../core/skill-sdk.js");
+const Twilio=require("../providers/twilio.js");
+const Spotify=require("../providers/spotify.js");
+const Drive=require("../providers/google-drive.js");
+const Slack=require("../providers/slack.js");
+const M365=require("../providers/microsoft365.js");
+const Notion=require("../providers/notion.js");
+const HomeAssistant=require("../providers/home-assistant.js");
+const WhatsApp=require("../providers/whatsapp.js");
+
 const Policy=require("../core/policy.js");
 const Approval=require("../core/approval.js");
 const {createSkillSandbox}=require("../core/sandbox.js");
@@ -415,6 +425,39 @@ const GoogleCalendar=require("../google-calendar.js");
   await secrets.set("GOOGLE_API_KEY","abc");
   assert.equal(await secrets.get("GOOGLE_API_KEY"),"abc");
   assert.deepEqual(secrets.listNames(),["GOOGLE_API_KEY"]);
+
+  const sdkRegistry=createSkillRegistry([{id:"echo",name:"Echo",permissions:["echo.run"]}]);
+  const sdkSandbox=createSkillSandbox({registry:sdkRegistry});
+  const skill=SkillSDK.defineSkill({id:"echo",name:"Echo",permissions:["echo.run"]},{run:{permission:"echo.run",handler:async x=>({ok:true,value:x})}});
+  const host=SkillSDK.createSkillHost({sandbox:sdkSandbox});
+  host.install(skill);
+  assert.equal((await host.invoke("echo","run",42)).value,42);
+
+  const twilio=Twilio.createTwilioAdapter({accountSid:"sid",authToken:"token",fromNumber:"+100",fetchFn:async()=>({ok:true,status:201,json:async()=>({sid:"SM1"})})});
+  assert.equal((await twilio.sendSms({to:"+200",body:"Hi"})).live,true);
+  assert.equal((await Twilio.createTwilioAdapter({}).sendSms({to:"+1",body:"x"})).ok,false);
+
+  const oauth={getToken:async()=>({ok:true,accessToken:"tok"})};
+  const spotify=Spotify.createSpotifyAdapter({tokenProvider:oauth,fetchFn:async()=>({ok:true,status:200,json:async()=>({tracks:{items:[]}})})});
+  assert.equal((await spotify.search({query:"Coldplay"})).live,true);
+
+  const drive=Drive.createGoogleDriveAdapter({tokenProvider:oauth,fetchFn:async()=>({ok:true,status:200,json:async()=>({files:[{id:"f1",name:"Doc"}]})})});
+  assert.equal((await drive.listFiles()).files[0].name,"Doc");
+
+  const slack=Slack.createSlackAdapter({botToken:"x",fetchFn:async()=>({ok:true,status:200,json:async()=>({ok:true,ts:"1"})})});
+  assert.equal((await slack.postMessage({channel:"C1",text:"Hi"})).live,true);
+
+  const m365=M365.createMicrosoft365Adapter({tokenProvider:oauth,fetchFn:async()=>({ok:true,status:200,json:async()=>({value:[]})})});
+  assert.equal((await m365.messages()).live,true);
+
+  const notion=Notion.createNotionAdapter({token:"n",fetchFn:async()=>({ok:true,status:200,json:async()=>({results:[]})})});
+  assert.equal((await notion.search({query:"Nikky"})).live,true);
+
+  const ha=HomeAssistant.createHomeAssistantAdapter({baseUrl:"http://ha.local",token:"h",fetchFn:async()=>({ok:true,status:200,json:async()=>[]})});
+  assert.equal((await ha.states()).live,true);
+
+  const wa=WhatsApp.createWhatsAppAdapter({accessToken:"w",phoneNumberId:"p",fetchFn:async()=>({ok:true,status:200,json:async()=>({messages:[{id:"1"}]})})});
+  assert.equal((await wa.sendText({to:"1555",text:"Hello"})).live,true);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
