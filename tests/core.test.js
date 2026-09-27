@@ -1,4 +1,11 @@
 const assert=require("assert");
+const Policy=require("../core/policy.js");
+const Approval=require("../core/approval.js");
+const {createSkillSandbox}=require("../core/sandbox.js");
+const {createProviderHealth}=require("../core/provider-health.js");
+const {createAuditChain}=require("../core/audit-chain.js");
+const Secrets=require("../core/secrets.js");
+
 const {createContextGraph}=require("../core/context-graph.js");
 const Prediction=require("../core/prediction.js");
 const {createFeedbackModel}=require("../core/feedback.js");
@@ -367,6 +374,47 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.ok(travel.tasks.some(t=>t.stage==="departure"));
   assert.ok(travel.tasks.some(t=>t.stage==="weather"));
   assert.ok(travel.tasks.some(t=>t.stage==="traffic"));
+
+  const policy=Policy.createPolicyEngine();
+  policy.add({id:"trusted-spouse",actionType:"sms.send",recipient:"+123",effect:Policy.EFFECTS.ALLOW,priority:100});
+  policy.add({id:"default-sms",actionType:"sms.send",effect:Policy.EFFECTS.APPROVAL,priority:10});
+  assert.equal(policy.evaluate({type:"sms.send",payload:{recipient:"+123"}}).effect,Policy.EFFECTS.ALLOW);
+  assert.equal(policy.evaluate({type:"sms.send",payload:{recipient:"+999"}}).effect,Policy.EFFECTS.APPROVAL);
+
+  let apNow=1000;
+  const approvals2=Approval.createApprovalStore({now:()=>apNow,ttlMs:100});
+  const ap=approvals2.create({type:"email.send",payload:{recipient:"tim@example.com",token:"secret"},provenance:{source:"test"}});
+  assert.equal(ap.preview.payload.token,"[REDACTED]");
+  apNow=1200;
+  assert.equal(approvals2.get(ap.id).status,"expired");
+  assert.equal(approvals2.decide(ap.id,"approved").ok,false);
+
+  const registry2=createSkillRegistry([{id:"gmail",name:"Gmail",permissions:["gmail.read"]}]);
+  const sandbox=createSkillSandbox({registry:registry2});
+  assert.equal(await sandbox.invoke("gmail","gmail.read",async()=>42),42);
+  assert.throws(()=>sandbox.assert("gmail","gmail.send"));
+
+  let healthNow=0;
+  const health=createProviderHealth({failureThreshold:2,cooldownMs:100,now:()=>healthNow});
+  health.failure("gmail",new Error("x"));
+  health.failure("gmail",new Error("x"));
+  assert.equal(health.canCall("gmail"),false);
+  healthNow=101;
+  assert.equal(health.canCall("gmail"),true);
+  health.success("gmail");
+  assert.equal(health.state("gmail").status,"healthy");
+
+  const chain=createAuditChain({key:"test-key"});
+  chain.append({action:"email.send",decision:"approval"});
+  chain.append({action:"email.send",decision:"approved"});
+  assert.equal(chain.verify().ok,true);
+  chain.entries[0].event.decision="tampered";
+  assert.equal(chain.verify().ok,false);
+
+  const secrets=Secrets.createMemorySecretStore();
+  await secrets.set("GOOGLE_API_KEY","abc");
+  assert.equal(await secrets.get("GOOGLE_API_KEY"),"abc");
+  assert.deepEqual(secrets.listNames(),["GOOGLE_API_KEY"]);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
