@@ -2,16 +2,25 @@ const http=require("http");
 const {URL}=require("url");
 const {loadConfig}=require("./config.js");
 const {createRuntime}=require("./runtime.js");
+const {securityHeaders,requestId,createRateLimiter,timingSafeEqual}=require("./security.js");
 
 const {config,warnings}=loadConfig();
 const runtime=createRuntime();
+const limiter=createRateLimiter({windowMs:60000,max:120});
 
 function json(res,status,body){const data=JSON.stringify(body);res.writeHead(status,{"content-type":"application/json","content-length":Buffer.byteLength(data)});res.end(data)}
 function readJson(req){return new Promise((resolve,reject)=>{let body="";req.on("data",c=>{body+=c;if(body.length>1e6){reject(new Error("request too large"));req.destroy()}});req.on("end",()=>{try{resolve(body?JSON.parse(body):{})}catch(e){reject(e)}});req.on("error",reject)})}
 function bearer(req){const h=req.headers.authorization||"";return h.startsWith("Bearer ")?h.slice(7):""}
-function requireService(req,res){if(!config.serviceToken||bearer(req)!==config.serviceToken){json(res,401,{error:"unauthorized"});return false}return true}
+function requireService(req,res){
+ const rate=limiter.check(req.socket?.remoteAddress||"unknown");
+ res.setHeader("X-RateLimit-Remaining",String(rate.remaining));
+ if(!rate.allowed){json(res,429,{error:"rate_limited"});return false}
+ if(!config.serviceToken||!timingSafeEqual(bearer(req),config.serviceToken)){json(res,401,{error:"unauthorized"});return false}
+ return true
+}
 
 async function handler(req,res){
+ securityHeaders(res);requestId(req,res);
  const url=new URL(req.url,"http://localhost");
  try{
   if(req.method==="GET"&&url.pathname==="/health")return json(res,200,{ok:true,service:"nikky-core",environment:config.environment,warnings});
