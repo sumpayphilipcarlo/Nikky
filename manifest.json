@@ -1,0 +1,9 @@
+{
+  "name": "Nikky — Personal AI Executive Assistant",
+  "short_name": "Nikky",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f5f7",
+  "theme_color": "#111827",
+  "description": "Voice-first proactive digital companion and personal AI executive assistant."
+}
