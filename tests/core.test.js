@@ -1,4 +1,7 @@
 const assert=require("assert");
+const {createDataControls}=require("../core/data-controls.js");
+const ProductMetrics=require("../core/product-metrics.js");
+
 const {createTaskManager}=require("../core/tasks.js");
 const Brief=require("../core/brief.js");
 const Explain=require("../core/explain.js");
@@ -617,6 +620,25 @@ const GoogleCalendar=require("../google-calendar.js");
   onboarding.complete("privacy",{memory:true});
   assert.equal(onboarding.progress().requiredComplete,true);
   assert.equal(Demo.scenarios.length,6);
+
+  const dataSource={
+    exportUser:async id=>({id,items:[1,2]}),
+    deleteUser:async id=>({ok:true,id})
+  };
+  const controls=createDataControls({sources:{memory:dataSource}});
+  assert.equal((await controls.exportAll("u1")).data.memory.items.length,2);
+  assert.equal((await controls.deleteAll("u1")).results.memory.ok,true);
+
+  const pm=ProductMetrics.calculate({counters:{
+    "suggestions.total:{}":10,
+    "suggestions.accepted:{}":7,
+    "suggestions.rejected:{}":2,
+    "suggestions.ignored:{}":1,
+    "actions.completed:{}":9,
+    "actions.failed:{}":1
+  }});
+  assert.equal(pm.suggestionAcceptanceRate,.7);
+  assert.equal(pm.actionReliability,.9);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
