@@ -113,6 +113,21 @@ async function handler(req,res,runtimeOverride=runtime){
   const principal=url.pathname.startsWith("/v1/")?authorizeApi(req,res):null;
   if(url.pathname.startsWith("/v1/")&&!principal)return;
 
+  if(req.method==="GET"&&url.pathname==="/v1/status"){
+   const vault=appRuntime.credentialVault;
+   const providers=vault?.list?await vault.list():[];
+   const workflows=[...appRuntime.workflows.values()];
+   const workflowStates=workflows.reduce((acc,w)=>{acc[w.state]=(acc[w.state]||0)+1;return acc},{});
+   return json(res,200,{
+    backend:{connected:true,environment:config.environment},
+    providers,
+    providerHealth:appRuntime.providerHealth?.snapshot?.()||[],
+    approvalsPending:appRuntime.approvals.filter(a=>!a.status||a.status==="pending").length,
+    workflows:{total:workflows.length,states:workflowStates},
+    auditIntegrity:appRuntime.auditLedger?.verify?.()||null,
+    metrics:appRuntime.metrics.snapshot()
+   });
+  }
   if(req.method==="GET"&&url.pathname==="/v1/approvals")return json(res,200,{approvals:appRuntime.approvals});
   if(req.method==="GET"&&url.pathname==="/v1/audit")return json(res,200,{audit:appRuntime.audit,integrity:appRuntime.auditLedger?.verify?.()||null});
   if(req.method==="GET"&&url.pathname==="/v1/metrics")return json(res,200,appRuntime.metrics.snapshot());
