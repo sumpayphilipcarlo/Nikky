@@ -1,4 +1,9 @@
 const assert=require("assert");
+const {createMemoryRepository}=require("../storage/memory.js");
+const {createPostgresRepository}=require("../storage/postgres.js");
+const {createWorker}=require("../server/worker.js");
+const Push=require("../providers/push.js");
+
 const Platform=require("../core/platform.js");
 const {createPresenceModel}=require("../core/presence.js");
 const {createEscalation}=require("../core/escalation.js");
@@ -538,6 +543,34 @@ const GoogleCalendar=require("../google-calendar.js");
   const wake=Voice.createWakeWordController();
   assert.equal((await wake.start()).ok,false);
   assert.equal(wake.isListening(),false);
+
+  const repoMem=createMemoryRepository();
+  await repoMem.upsertUser({id:"u1",email:"u@example.com"});
+  await repoMem.saveWorkflow("u1",{id:"wf1",type:"test",state:"planned"});
+  assert.equal((await repoMem.listWorkflows("u1")).length,1);
+  repoMem.putJob({id:"j1",type:"scan",enabled:true,nextRunAt:new Date("2026-09-27T08:00:00Z"),interval_ms:60000});
+  const worker=createWorker({
+    repository:repoMem,
+    handlers:{scan:async()=>({scanned:true})},
+    now:()=>new Date("2026-09-27T08:00:00Z")
+  });
+  const wr=await worker.runOnce();
+  assert.equal(wr[0].ok,true);
+  assert.equal(repoMem.jobs.get("j1").lastStatus,"success");
+
+  const queries=[];
+  const fakePool={query:async(sql,params)=>{queries.push({sql,params});return {rows:[{id:"u2"}]}}};
+  const pg=createPostgresRepository(fakePool);
+  assert.equal((await pg.upsertUser({id:"u2",email:"x@example.com"})).id,"u2");
+  assert.ok(queries[0].sql.includes("INSERT INTO users"));
+
+  const fcm=Push.createFcmAdapter({
+    projectId:"project",
+    tokenProvider:{getToken:async()=>({ok:true,accessToken:"oauth"})},
+    fetchFn:async()=>({ok:true,status:200,json:async()=>({name:"projects/project/messages/1"})})
+  });
+  assert.equal((await fcm.send({deviceToken:"dev",title:"Nikky",body:"Leave now"})).live,true);
+  assert.equal((await Push.createFcmAdapter({}).send({deviceToken:"x"})).ok,false);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
