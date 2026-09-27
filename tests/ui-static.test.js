@@ -4,6 +4,10 @@ const html=fs.readFileSync(path.join(__dirname,"..","index.html"),"utf8");
 
 assert.ok(html.includes('script src="api-client.js"'),"PWA must load Nikky API client");
 assert.ok(html.includes('id="coreStatus"'),"PWA must surface backend connection state");
+assert.ok(html.includes('data-view="system"'),"PWA must expose the System control center");
+assert.ok(html.includes('id="systemProviders"'),"System view must expose provider state");
+assert.ok(!html.includes("Prototype live"),"UI must not claim adapters are live merely because code exists");
+assert.ok(!html.includes("Live Calendar, Maps, and SMS providers are not connected yet."),"Journey copy must not use stale hardcoded provider status");
 assert.ok(html.includes('aria-label="Talk to Nikky"'),"top microphone needs an accessible name");
 assert.ok(html.includes('aria-label="Start voice input"'),"voice microphone needs an accessible name");
 assert.ok(html.includes(':focus-visible'),"keyboard focus must be visible");
