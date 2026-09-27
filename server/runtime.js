@@ -7,6 +7,9 @@ const {createScheduler}=require("../core/scheduler.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
 const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
+const {createAuditLedger}=require("../core/audit-ledger.js");
+const {createProviderHealth}=require("../core/provider-health.js");
+const {createPolicyStore}=require("../core/policy.js");
 const {createIdempotencyStore}=require("../core/idempotency.js");
 const {createGmailAdapter}=require("../providers/gmail.js");
 const {createTwilioAdapter}=require("../providers/twilio.js");
@@ -36,6 +39,9 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
  const metrics=createMetrics();
+ const auditLedger=createAuditLedger();
+ const providerHealth=createProviderHealth({now});
+ const policyStore=createPolicyStore();
  const idempotency=createIdempotencyStore({now});
  const approvals=[],audit=[];
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -58,7 +64,16 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   Workflow.transition(wf,Workflow.STATES.PLANNED,"action structured");
   workflows.set(wf.id,wf);
   await persistWorkflow(wf);
-  const result=await orchestrator.propose(action);
+  const scoped=policyStore.evaluate(action,{
+    provider:action?.provenance?.provider||action?.provenance?.source||null,
+    deviceId:action?.meta?.deviceId||null,
+    now:new Date(now()).toISOString()
+  });
+  const result=await orchestrator.propose(action,scoped.matched?{
+    authorityLevel:scoped.effect,
+    reason:"Scoped authority policy "+scoped.policyId
+  }:{});
+  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.policyId||null}});
   if(result.status==="approval_required") Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"user approval required");
   else if(result.status==="denied") Workflow.transition(wf,Workflow.STATES.CANCELLED,"authority denied action");
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
@@ -77,6 +92,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    else if(result.status==="execution_failed"||result.status==="approved_no_executor")Workflow.transition(wf,Workflow.STATES.FAILED,result.status);
   }
   if(wf)await persistWorkflow(wf);
+  auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
  }
@@ -85,6 +101,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   const result=orchestrator.reject(id);
   const wf=item?[...workflows.values()].find(w=>w.context?.action===item.action||w.context?.action?.type===item.action?.type&&w.state===Workflow.STATES.AWAITING_APPROVAL):null;
   if(wf){Workflow.transition(wf,Workflow.STATES.CANCELLED,"user rejected");await persistWorkflow(wf);}
+  auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"rejected",metadata:{approvalId:id}});
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
@@ -94,6 +111,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
