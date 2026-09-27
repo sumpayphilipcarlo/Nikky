@@ -112,6 +112,13 @@ const Orchestrator=require("../orchestrator.js");
  res=await fetch(base+"/v1/metrics");
  assert.equal(res.status,401);
 
+ res=await fetch(base+"/v1/providers",{headers:{"authorization":"Bearer test-token"}});
+ assert.equal(res.status,200);
+ body=await res.json();
+ assert.ok(Array.isArray(body.providers));
+ assert.equal(JSON.stringify(body).includes("refreshToken"),false);
+ assert.equal(JSON.stringify(body).includes("clientSecret"),false);
+
  res=await fetch(base+"/v1/memory",{
    method:"POST",
    headers:{"authorization":"Bearer test-token","content-type":"application/json"},
