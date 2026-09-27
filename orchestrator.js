@@ -31,6 +31,10 @@
        return {status:"allowed_no_executor",verdict};
      }
      const result=await executor(action);
+     if(result&&result.ok===false){
+       record(action,"execution_failed",result.reason||"Executor reported failure");
+       return {status:"execution_failed",verdict,result};
+     }
      record(action,"executed","Action executed by configured executor");
      return {status:"executed",verdict,result};
    }
@@ -41,6 +45,10 @@
      record(item.action,"approved","User approved action");
      if(typeof executor!=="function") return {status:"approved_no_executor",item};
      const result=await executor(item.action);
+     if(result&&result.ok===false){
+       record(item.action,"execution_failed",result.reason||"Executor reported failure");
+       return {status:"execution_failed",item,result};
+     }
      record(item.action,"executed","Approved action executed");
      return {status:"executed",item,result};
    }
