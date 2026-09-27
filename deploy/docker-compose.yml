@@ -1,0 +1,24 @@
+services:
+  nikky:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      PORT: 3000
+      NIKKY_SERVICE_TOKEN: change-me
+      NIKKY_MEMORY_KEY: change-me-too
+      DATABASE_URL: postgres://nikky:nikky@postgres:5432/nikky
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: nikky
+      POSTGRES_PASSWORD: nikky
+      POSTGRES_DB: nikky
+    volumes:
+      - nikky_pg:/var/lib/postgresql/data
+volumes:
+  nikky_pg:
