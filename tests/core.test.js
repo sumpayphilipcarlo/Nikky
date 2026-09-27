@@ -1,4 +1,9 @@
 const assert=require("assert");
+const Files=require("../core/files.js");
+const Extractors=require("../core/extractors.js");
+const Documents=require("../core/document-intelligence.js");
+const {createDocumentWorkflow}=require("../core/document-workflow.js");
+
 const SkillSDK=require("../core/skill-sdk.js");
 const Twilio=require("../providers/twilio.js");
 const Spotify=require("../providers/spotify.js");
@@ -458,6 +463,44 @@ const GoogleCalendar=require("../google-calendar.js");
 
   const wa=WhatsApp.createWhatsAppAdapter({accessToken:"w",phoneNumberId:"p",fetchFn:async()=>({ok:true,status:200,json:async()=>({messages:[{id:"1"}]})})});
   assert.equal((await wa.sendText({to:"1555",text:"Hello"})).live,true);
+
+  const fileCtx=Files.createFileContext();
+  const txt=fileCtx.ingest({id:"file1",name:"notes.txt",mime:"text/plain",text:"This is a long meeting note about Nikky and a follow-up action."});
+  assert.equal(txt.kind,"text");
+  fileCtx.select("file1");
+  const intel=Documents.createDocumentIntelligence();
+  const localAnalysis=await intel.analyze(fileCtx.current());
+  assert.equal(localAnalysis.ok,true);
+  assert.equal(localAnalysis.source,"local-fallback");
+  assert.ok(localAnalysis.result.summary.includes("Nikky"));
+
+  const eml=Extractors.parseEml("Subject: Hello\r\nFrom: Tim <tim@example.com>\r\nTo: Me <me@example.com>\r\n\r\nPlease send the report.");
+  assert.equal(eml.subject,"Hello");
+  assert.ok(eml.body.includes("report"));
+
+  const cfg=Extractors.parseConfig("API_TOKEN=supersecret\nregion=ph");
+  assert.equal(cfg.API_TOKEN,"[REDACTED]");
+  assert.equal(cfg.region,"ph");
+
+  const binary=fileCtx.ingest({id:"file2",name:"diagram.png",mime:"image/png",size:100,bytes:Buffer.from([1,2,3])});
+  const binaryResult=await intel.analyze(binary);
+  assert.equal(binaryResult.ok,false);
+  assert.equal(binaryResult.requiresExtractor,true);
+
+  fileCtx.select("file1");
+  const docProposals=[];
+  const docFlow=createDocumentWorkflow({
+    files:fileCtx,
+    intelligence:intel,
+    resolveRecipient:async q=>q==="Tim"?"tim@example.com":null,
+    proposeAction:async a=>{docProposals.push(a);return {status:"approval_required"}}
+  });
+  const docResult=await docFlow.summarizeAndPrepareEmail({recipientQuery:"Tim"});
+  assert.equal(docResult.ok,true);
+  assert.equal(docResult.recipient,"tim@example.com");
+  assert.equal(docResult.action.type,"email.send");
+  assert.equal(docResult.proposal.status,"approval_required");
+  assert.equal(docProposals.length,1);
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
