@@ -17,7 +17,8 @@ function createGuardian({sensorFusion,now=()=>Date.now(),notify,contactTrusted,r
   }
   if(notify){await notify(i);i.timeline.push({at:now(),event:"urgent_notification"})}
   const strong=!!i.corroboration.ok;
-  if(strong&&contactTrusted){
+  const hasTrustedContact=Array.isArray(i.policy?.trustedContacts)&&i.policy.trustedContacts.some(Boolean);
+  if(strong&&hasTrustedContact&&contactTrusted){
    await contactTrusted(i);i.level=LEVELS.TRUSTED_CONTACT;i.timeline.push({at:now(),event:"trusted_contact_requested"});
   }
   const mayRequestProfessional=strong&&(userConfirmedEmergency||i.policy.allowProfessionalHelpWhenUnresponsive===true);
