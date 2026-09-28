@@ -130,6 +130,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
     : providerExecutor(action);
   const run=await idempotency.run(key,executeOnce);
   if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
+  await persistRuntimeState?.("idempotency");
   return {...run.result,deduplicated:run.deduplicated};
  };
  const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
@@ -169,6 +170,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
   else if(result.status==="execution_failed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.FAILED,"executor failed");}
   await persistWorkflow(wf);
+  await Promise.all([persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:result.verdict?.level,status:result.status});
   return {workflow:wf,result,risk};
  }
@@ -196,7 +198,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    }
   }
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
-  await persistRuntimeState?.("missions");
+  await Promise.all([persistRuntimeState("missions"),persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
  }
@@ -206,6 +208,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   const wf=item?[...workflows.values()].find(w=>w.context?.action===item.action||w.context?.action?.type===item.action?.type&&w.state===Workflow.STATES.AWAITING_APPROVAL):null;
   if(wf){Workflow.transition(wf,Workflow.STATES.CANCELLED,"user rejected");await persistWorkflow(wf);}
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"rejected",metadata:{approvalId:id}});
+  await Promise.all([persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
@@ -218,6 +221,10 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  });
 
  const runtimeStateBuckets={
+  approvals:()=>JSON.parse(JSON.stringify(approvals)),
+  audit_log:()=>JSON.parse(JSON.stringify(audit)),
+  audit_ledger:()=>auditLedger.exportAll(),
+  idempotency:()=>idempotency.snapshot(),
   fabric:()=>fabric.snapshot(),
   capability_permissions:()=>capabilityPermissions.snapshot(),
   missions:()=>missionPlanner.snapshot(),
@@ -239,6 +246,10 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   if(!workflowRepository?.loadRuntimeStates)return {};
   const names=Object.keys(runtimeStateBuckets);
   const states=await workflowRepository.loadRuntimeStates(userId,names);
+  if(states.approvals){approvals.length=0;approvals.push(...JSON.parse(JSON.stringify(states.approvals)))}
+  if(states.audit_log){audit.length=0;audit.push(...JSON.parse(JSON.stringify(states.audit_log)))}
+  if(states.audit_ledger)auditLedger.restore(states.audit_ledger);
+  if(states.idempotency)idempotency.restore(states.idempotency);
   if(states.fabric)fabric.restore(states.fabric);
   if(states.capability_permissions)capabilityPermissions.restore(states.capability_permissions);
   if(states.missions)missionPlanner.restore(states.missions);
