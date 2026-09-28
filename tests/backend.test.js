@@ -104,7 +104,21 @@ const Orchestrator=require("../orchestrator.js");
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
  const port=server.address().port;
  const base="http://127.0.0.1:"+port;
- let res=await fetch(base+"/health");
+ let res=await fetch(base+"/auth/config");
+ assert.equal(res.status,200);
+ let authCfg=await res.json();
+ assert.equal(authCfg.configured,false);
+
+ res=await fetch(base+"/");
+ assert.equal(res.status,200);
+ assert.match(res.headers.get("content-type")||"",/text\/html/);
+ const homeHtml=await res.text();
+ assert.ok(homeHtml.includes("NIKKY FABRIC"));
+ res=await fetch(base+"/api-client.js");
+ assert.equal(res.status,200);
+ assert.match(res.headers.get("content-type")||"",/javascript/);
+
+ res=await fetch(base+"/health");
  assert.equal(res.status,200);
  let body=await res.json();
  assert.equal(body.ok,true);
@@ -169,6 +183,10 @@ const Orchestrator=require("../orchestrator.js");
  res=await fetch(base+"/health");
  assert.equal(res.headers.get("x-content-type-options"),"nosniff");
  assert.equal(res.headers.get("x-frame-options"),"DENY");
+ assert.match(res.headers.get("permissions-policy")||"",/microphone=\(self\)/);
+ assert.match(res.headers.get("permissions-policy")||"",/geolocation=\(self\)/);
+ assert.match(res.headers.get("content-security-policy")||"",/accounts\.google\.com/);
+ assert.match(res.headers.get("content-security-policy")||"",/api\.open-meteo\.com/);
  assert.ok(res.headers.get("x-request-id"));
 
  runtime.policyStore.add({id:"auto-note",actionType:"note.create",effect:"allow"});

@@ -1,9 +1,10 @@
 const Authority=require("../authority.js");
 global.NikkyAuthority=Authority;
 const Orchestrator=require("../orchestrator.js");
-const {createMemoryStore}=require("../core/memory.js");
+const {createMemoryStore,seal,open}=require("../core/memory.js");
 const {createIdentityService}=require("../core/identity.js");
 const {createScheduler}=require("../core/scheduler.js");
+const {createNotificationCenter}=require("../core/notifications.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
 const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
@@ -85,6 +86,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const memory=createMemoryStore({now:()=>new Date(now())});
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
+ const notificationCenter=createNotificationCenter({now});
  const metrics=createMetrics();
  const auditLedger=createAuditLedger();
  const providerHealth=createProviderHealth({now});
@@ -124,17 +126,63 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const providerExecutor=createActionExecutor({gmail,twilio,calendar,push,slack,microsoft365,whatsapp,homeAssistant,spotify,providerHealth});
  const executor=async action=>{
   const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
-  if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
-  const executeOnce=()=>action?.meta?.useFabric===true
-    ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
-    : providerExecutor(action);
+  if(!key)return {ok:false,live:false,reason:"idempotency key is required for action execution"};
+  const executeOnce=async()=>{
+    if(action?.type==="note.create"){
+      const p=payload(action),id=p.id||("note_"+now().toString(36)+"_"+Math.random().toString(36).slice(2,7));
+      const rec=memory.put({id,type:p.type||"note",value:{title:action.title||p.title||"Note",body:p.body||action.summary||""},source:action?.provenance?.source||"nikky",sensitivity:p.sensitivity||"normal"});
+      await persistMemoryRecord(rec);
+      return {ok:true,live:true,source:"nikky-memory",recordId:id};
+    }
+    if(action?.type==="proactive.notify"){
+      const p=payload(action),notice={type:p.type||"notification",title:action.title||p.title||"Nikky",body:action.summary||p.body||p.message||"",priority:Number(p.priority||action?.meta?.priority||80),dedupeKey:p.dedupeKey||key,data:p};
+      if(!notificationCenter.shouldDeliver(notice))return {ok:true,live:true,source:"nikky-notification",deduplicated:true};
+      const item=notificationCenter.record(notice,"in-app","delivered");
+      await persistRuntimeState("notifications");
+      const deviceToken=p.deviceToken||env.NIKKY_PRIMARY_DEVICE_TOKEN;
+      if(deviceToken&&push?.send){
+        const pushed=await push.send({deviceToken,title:notice.title,body:notice.body,data:{notificationId:item.dedupeKey||key}});
+        return {ok:true,live:true,source:"nikky-notification",notification:item,push:pushed};
+      }
+      return {ok:true,live:true,source:"nikky-notification",notification:item};
+    }
+    return action?.meta?.useFabric===true
+      ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
+      : providerExecutor(action);
+  };
   const run=await idempotency.run(key,executeOnce);
   if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
+  await persistRuntimeState?.("idempotency");
   return {...run.result,deduplicated:run.deduplicated};
  };
  const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
  const workflows=new Map();
  async function persistWorkflow(wf){if(workflowRepository?.saveWorkflow)await workflowRepository.saveWorkflow(userId,wf);return wf;}
+ async function persistMemoryRecord(record){
+  if(!workflowRepository?.saveMemory)return record;
+  const encryptedValue=await seal(record.value,env.NIKKY_MEMORY_KEY||env.NIKKY_MEMORY_KEY_MATERIAL||"");
+  await workflowRepository.saveMemory(userId,{id:record.id,type:record.type,encryptedValue,source:record.source,sensitivity:record.sensitivity,expiresAt:record.expiresAt});
+  return record;
+ }
+ async function deleteMemoryRecord(id){
+  const removed=memory.remove(id);
+  if(workflowRepository?.deleteMemory)await workflowRepository.deleteMemory(userId,id);
+  return removed;
+ }
+ async function restoreMemories(){
+  if(!workflowRepository?.listMemories)return [];
+  const rows=await workflowRepository.listMemories(userId,{limit:1000});
+  const restored=[];
+  for(const row of rows){
+   try{
+    const value=await open(row.encrypted_value,env.NIKKY_MEMORY_KEY||env.NIKKY_MEMORY_KEY_MATERIAL||"");
+    const rec=memory.put({id:row.id,type:row.type,value,source:row.source||"stored",sensitivity:row.sensitivity||"normal",retentionDays:null});
+    rec.createdAt=row.created_at||rec.createdAt;rec.updatedAt=row.updated_at||rec.updatedAt;rec.expiresAt=row.expires_at||null;
+    restored.push(rec);
+   }catch(error){auditLedger.append({actor:"nikky-core",actionType:"memory.restore",decision:"failed",metadata:{id:row.id,error:error.message}})}
+  }
+  return restored;
+ }
 
  async function propose(action){
   const risk=Risk.classify(action);
@@ -148,20 +196,28 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
     now:new Date(now()).toISOString(),
     riskScore:risk?.score||0
   });
-  const hasScopedRule=!!scoped.ruleId;
-  const authorityLevel=scoped.effect===EFFECTS.ALLOW?Authority.LEVELS.AUTO:
-    scoped.effect===EFFECTS.DENY?Authority.LEVELS.DENY:
-    scoped.effect===EFFECTS.APPROVAL?Authority.LEVELS.APPROVAL:null;
-  const result=await orchestrator.propose(action,hasScopedRule&&authorityLevel?{
-    authorityLevel,
-    reason:"Scoped authority policy "+scoped.ruleId
-  }:{});
-  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.ruleId||null}});
+  const fabricDecision=action?.meta?.useFabric===true&&action?.meta?.endpointId
+    ? fabricPolicy.evaluate({endpointId:action.meta.endpointId,capability:action.type,payload:payload(action)})
+    : null;
+  let authorityLevel=null,authorityReason=null;
+  if(fabricDecision){
+    if(fabricDecision.allowed===false){authorityLevel=Authority.LEVELS.DENY;authorityReason=fabricDecision.reason||"Fabric capability policy denied action";}
+    else if(fabricDecision.mode==="approval"){authorityLevel=Authority.LEVELS.APPROVAL;authorityReason="Fabric capability requires approval";}
+  }
+  if(!authorityLevel&&scoped.ruleId){
+    authorityLevel=scoped.effect===EFFECTS.ALLOW?Authority.LEVELS.AUTO:
+      scoped.effect===EFFECTS.DENY?Authority.LEVELS.DENY:
+      scoped.effect===EFFECTS.APPROVAL?Authority.LEVELS.APPROVAL:null;
+    if(authorityLevel)authorityReason="Scoped authority policy "+scoped.ruleId;
+  }
+  const result=await orchestrator.propose(action,authorityLevel?{authorityLevel,reason:authorityReason}:{});
+  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.ruleId||null,fabricMode:fabricDecision?.mode||null}});
   if(result.status==="approval_required") Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"user approval required");
   else if(result.status==="denied") Workflow.transition(wf,Workflow.STATES.CANCELLED,"authority denied action");
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
   else if(result.status==="execution_failed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.FAILED,"executor failed");}
   await persistWorkflow(wf);
+  await Promise.all([persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:result.verdict?.level,status:result.status});
   return {workflow:wf,result,risk};
  }
@@ -189,6 +245,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    }
   }
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
+  await Promise.all([persistRuntimeState("missions"),persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
  }
@@ -198,6 +255,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   const wf=item?[...workflows.values()].find(w=>w.context?.action===item.action||w.context?.action?.type===item.action?.type&&w.state===Workflow.STATES.AWAITING_APPROVAL):null;
   if(wf){Workflow.transition(wf,Workflow.STATES.CANCELLED,"user rejected");await persistWorkflow(wf);}
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"rejected",metadata:{approvalId:id}});
+  await Promise.all([persistRuntimeState("approvals"),persistRuntimeState("audit_log"),persistRuntimeState("audit_ledger")]);
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
@@ -209,12 +267,56 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   requestProfessionalHelp:providers.requestProfessionalHelp||null
  });
 
+ const runtimeStateBuckets={
+  approvals:()=>JSON.parse(JSON.stringify(approvals)),
+  audit_log:()=>JSON.parse(JSON.stringify(audit)),
+  audit_ledger:()=>auditLedger.exportAll(),
+  idempotency:()=>idempotency.snapshot(),
+  authority_policies:()=>policyStore.snapshot(),
+  notifications:()=>notificationCenter.snapshot(),
+  fabric:()=>fabric.snapshot(),
+  capability_permissions:()=>capabilityPermissions.snapshot(),
+  missions:()=>missionPlanner.snapshot(),
+  transactions:()=>transactionSafety.snapshot(),
+  sensors:()=>sensorFusion.snapshot(),
+  emergency_policies:()=>emergencyPolicies.snapshot(),
+  guardian_incidents:()=>guardian.snapshot()
+ };
+ async function persistRuntimeState(bucket){
+  if(!workflowRepository?.saveRuntimeState)return false;
+  if(bucket){
+   const getter=runtimeStateBuckets[bucket];if(!getter)throw new Error("unknown runtime state bucket");
+   await workflowRepository.saveRuntimeState(userId,bucket,getter());return true;
+  }
+  await Promise.all(Object.entries(runtimeStateBuckets).map(([name,getter])=>workflowRepository.saveRuntimeState(userId,name,getter())));
+  return true;
+ }
+ async function restoreRuntimeState(){
+  if(!workflowRepository?.loadRuntimeStates)return {};
+  const names=Object.keys(runtimeStateBuckets);
+  const states=await workflowRepository.loadRuntimeStates(userId,names);
+  if(states.approvals){approvals.length=0;approvals.push(...JSON.parse(JSON.stringify(states.approvals)))}
+  if(states.audit_log){audit.length=0;audit.push(...JSON.parse(JSON.stringify(states.audit_log)))}
+  if(states.audit_ledger)auditLedger.restore(states.audit_ledger);
+  if(states.idempotency)idempotency.restore(states.idempotency);
+  if(states.authority_policies)policyStore.restore(states.authority_policies);
+  if(states.notifications)notificationCenter.restore(states.notifications);
+  if(states.fabric)fabric.restore(states.fabric);
+  if(states.capability_permissions)capabilityPermissions.restore(states.capability_permissions);
+  if(states.missions)missionPlanner.restore(states.missions);
+  if(states.transactions)transactionSafety.restore(states.transactions);
+  if(states.sensors)sensorFusion.restore(states.sensors);
+  if(states.emergency_policies)emergencyPolicies.restore(states.emergency_policies);
+  if(states.guardian_incidents)guardian.restore(states.guardian_incidents);
+  return states;
+ }
+
  async function restoreWorkflows({state,limit=200}={}){
   if(!workflowRepository?.listWorkflows)return [];
   const rows=await workflowRepository.listWorkflows(userId,{state,limit});
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {userId,memory,persistMemoryRecord,deleteMemoryRecord,restoreMemories,identity,scheduler,notificationCenter,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
 }
 module.exports={createRuntime,createActionExecutor};

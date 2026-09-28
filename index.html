@@ -42,7 +42,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 <section id="view-today" class="view active">
   <div class="top"><div><div class="eyebrow">NIKKY DAILY BRIEF</div><h1 id="greeting">Good day.</h1><p class="muted">Nikky watches what matters before you need to ask.</p></div><button class="mic" id="micTop" aria-label="Talk to Nikky">🎙</button></div>
   <div class="grid">
-    <article class="card"><div class="eyebrow">NIKKY CORE</div><h3>Backend status</h3><div id="coreStatus" class="muted" role="status" aria-live="polite">Checking secure session…</div><button class="secondary" id="refreshCore" style="margin-top:10px">Refresh</button></article>
+    <article class="card"><div class="eyebrow">NIKKY CORE</div><h3>Backend status</h3><div id="coreStatus" class="muted" role="status" aria-live="polite">Checking secure session…</div><div id="identityControls" style="margin-top:10px"><div id="googleSignIn"></div><button class="secondary hidden" id="signOutCore">Sign out</button></div><button class="secondary" id="refreshCore" style="margin-top:10px">Refresh</button></article>
     <article class="card hero"><div class="eyebrow">NEXT IMPORTANT THING</div><h2 id="nextThing">Set your routine</h2><p class="muted" id="nextDetail">Add your normal workday and commute.</p></article>
     <article class="card"><div class="eyebrow">WEATHER</div><h3>Before you leave</h3><div id="weather" role="status" aria-live="polite">Enable location to check weather.</div><button class="secondary" id="weatherBtn">Check weather</button></article>
     <article class="card"><div class="eyebrow">COMMUTE</div><h3>Departure intelligence</h3><div id="commute">No routine yet.</div></article>
@@ -177,6 +177,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <article class="card"><h3>Authorized endpoints</h3><div id="fabricEndpoints" class="list"></div></article>
     <article class="card"><h3>Active missions</h3><div id="fabricMissions" class="list"></div></article>
     <article class="card"><h3>Capability permissions</h3><div id="fabricPermissions" class="list"></div></article>
+    <article class="card"><h3>Authority policies</h3><div id="fabricPolicies" class="list"></div></article>
     <article class="card hero"><div class="eyebrow">AUTHORITY BOUNDARY</div><h3>Capabilities are permissioned</h3><p class="muted">Existing apps and devices can only be used through user-granted capabilities. Consequential actions still pass through Nikky Core approval, idempotency, verification and audit controls.</p></article>
   </div>
 </section>
@@ -214,7 +215,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],fabricPermissions:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],fabricPermissions:[],authorityPolicies:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -279,22 +280,71 @@ function showCoreStatus(connected,message=""){
   ? '<strong>Secure backend connected</strong><div class="small muted">Approvals, actions, and audit use Nikky Core.</div>'
   : '<strong>Local prototype mode</strong><div class="small muted">'+esc(message||"No authenticated Nikky Core session. Privileged live execution is unavailable.")+'</div>';
 }
+let identityConfig=null;
+function setIdentityUi(authenticated,user=null){
+ const out=q("signOutCore"),googleBox=q("googleSignIn");
+ if(out)out.classList.toggle("hidden",!authenticated);
+ if(authenticated&&googleBox)googleBox.innerHTML="";
+ if(authenticated&&user&&q("coreStatus")){
+  q("coreStatus").innerHTML='<strong>Secure backend connected</strong><div class="small muted">'+esc(user.email||user.name||"Authenticated owner")+' · approvals, actions, and audit use Nikky Core.</div>';
+ }
+}
+function renderGoogleIdentity(attempt=0){
+ if(!identityConfig?.configured||!identityConfig.clientId||!String(identityConfig.issuer||"").includes("accounts.google.com"))return;
+ if(!window.google?.accounts?.id){
+  if(attempt<20)setTimeout(()=>renderGoogleIdentity(attempt+1),250);
+  return;
+ }
+ const box=q("googleSignIn");if(!box)return;
+ box.innerHTML="";
+ google.accounts.id.initialize({
+  client_id:identityConfig.clientId,
+  callback:async response=>{
+   try{
+    await coreApi.login(response.credential);
+    setIdentityUi(true);
+    await syncCoreState();
+   }catch(e){
+    showCoreStatus(false,e.status===403?"This Google account is not authorized as the Nikky owner.":e.message);
+    setIdentityUi(false);renderGoogleIdentity();
+   }
+  }
+ });
+ google.accounts.id.renderButton(box,{theme:"outline",size:"large",text:"signin_with",shape:"rectangular"});
+}
+async function initIdentity(){
+ if(!coreApi)return false;
+ try{identityConfig=await coreApi.authConfig()}catch(e){showCoreStatus(false,e.message);return false}
+ try{
+  const session=await coreApi.session();setIdentityUi(true,session.user);return true;
+ }catch{
+  setIdentityUi(false);renderGoogleIdentity();return false;
+ }
+}
+async function signOutCore(){
+ if(!coreApi)return;
+ try{await coreApi.logout()}catch{}
+ coreConnected=false;state.systemStatus=null;setIdentityUi(false);showCoreStatus(false,"Signed out.");renderGoogleIdentity();renderSystem();renderFabric();renderGuardian();
+}
+
 async function syncCoreState(){
  if(!coreApi)return showCoreStatus(false,"API client unavailable.");
  try{
   await coreApi.session();
-  const [ap,aud,status,fabric,permissions,missions,incidents,sensors]=await Promise.all([
-   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.permissions(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
+  const [ap,aud,status,fabric,permissions,policies,missions,incidents,sensors]=await Promise.all([
+   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.permissions(),coreApi.policies(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
   ]);
   state.approvals=Array.isArray(ap.approvals)?ap.approvals:[];
   state.audit=Array.isArray(aud.audit)?aud.audit:[];
   state.systemStatus=status||null;
   state.fabricEndpoints=Array.isArray(fabric.endpoints)?fabric.endpoints:[];
   state.fabricPermissions=Array.isArray(permissions.permissions)?permissions.permissions:[];
+  state.authorityPolicies=Array.isArray(policies.policies)?policies.policies:[];
   state.missions=Array.isArray(missions.missions)?missions.missions:[];
   state.guardianIncidents=Array.isArray(incidents.incidents)?incidents.incidents:[];
   state.guardianSensors=Array.isArray(sensors.sensors)?sensors.sensors:[];
   showCoreStatus(true);
+  try{const session=await coreApi.session();setIdentityUi(true,session.user)}catch{}
   persist();renderApprovals();renderAudit();renderSystem();renderFabric();renderGuardian();renderSkills();buildAudit();
   if(q("auditScope"))q("auditScope").textContent="Audit entries are synchronized with authenticated Nikky Core. Integrity status is visible in System.";
   return true;
@@ -479,6 +529,8 @@ function renderFabric(){
  q("fabricMissions").innerHTML=missions.length?missions.map(m=>`<div class="item"><strong>${esc(m.goal||m.id)}</strong><div class="muted small">${esc(m.state||"unknown")} · ${(m.steps||[]).filter(x=>x.status==="completed").length}/${(m.steps||[]).length} steps</div></div>`).join(""):'<div class="muted">No missions are active.</div>';
  const permissions=state.fabricPermissions||[];
  q("fabricPermissions").innerHTML=permissions.length?permissions.map(p=>`<div class="item"><strong>${esc(p.subjectId)} · ${esc(p.capability)}</strong><div class="muted small">${esc(p.mode||"approval")}${p.expiresAt?" · expires "+esc(p.expiresAt):""}</div></div>`).join(""):'<div class="muted">No capability permissions granted.</div>';
+ const policies=state.authorityPolicies||[];
+ q("fabricPolicies").innerHTML=policies.length?policies.map(p=>`<div class="item"><strong>${esc(p.actionType||"all actions")} · ${esc(p.effect||"approval")}</strong><div class="muted small">${esc(p.id)}${p.deviceId?" · endpoint "+esc(p.deviceId):""}${p.recipient?" · recipient "+esc(p.recipient):""}${p.maxRisk!=null?" · max risk "+esc(p.maxRisk):""}</div></div>`).join(""):'<div class="muted">No custom authority policies. Default review rules apply.</div>';
 }
 function renderGuardian(){
  if(!q("guardianIncidents"))return;
@@ -512,6 +564,7 @@ function buildAudit(){
 async function weather(){if(!navigator.geolocation){q("weather").textContent="Location unavailable.";return}q("weather").textContent="Checking…";navigator.geolocation.getCurrentPosition(async p=>{try{let u=`https://api.open-meteo.com/v1/forecast?latitude=${p.coords.latitude}&longitude=${p.coords.longitude}&current=temperature_2m,rain,precipitation&timezone=auto`;let j=await (await fetch(u)).json();let rain=j.current?.rain??j.current?.precipitation??0;q("weather").textContent=`${Math.round(j.current.temperature_2m)}°C · ${rain>0?"Rain detected — bring an umbrella.":"No current rain detected."}`}catch{q("weather").textContent="Weather check failed."}},()=>q("weather").textContent="Location permission not granted.")}
 q("weatherBtn").onclick=weather;
 q("refreshCore").onclick=syncCoreState;
+q("signOutCore").onclick=signOutCore;
 q("refreshSystem").onclick=syncCoreState;
 q("refreshFabric").onclick=syncCoreState;
 q("refreshGuardian").onclick=syncCoreState;
@@ -527,7 +580,7 @@ q("resetLearning").onclick=()=>{contextEngine.reset();persist();renderLearning()
 function process(raw){let l=raw.trim().toLowerCase().replace(/^hey nikky[,\\s]*/,"");q("transcript").textContent=raw;q("result").classList.remove("hidden");if(l.includes("when should i leave")||l.includes("what time")&&l.includes("leave")){let r=state.routine,leave=mins(r.arrival)-r.commute-r.buffer;q("result").innerHTML=`<strong>Leave by ${hm(leave)}.</strong><p>Using your baseline commute and arrival buffer.</p>`;return}if(l.includes("weather")){weather();q("result").innerHTML="<strong>Checking weather now.</strong>";return}if(l.includes("summar")&&l.includes("pdf")&&l.includes("email")){let who=(l.match(/to\s+([a-z][a-z0-9_-]*)/)||[])[1]||"recipient";proposeAction({type:"email.send",title:`Email PDF summary to ${who}`,summary:`Summarize the selected PDF and email the summary to ${who}. Requires live Gmail + AI backend.`,payload:{recipient:who},provenance:{source:"voice-command"}});q("result").innerHTML="<strong>Routed through Authority Engine.</strong><p>Approval is required before external sending.</p>";return}if(l.startsWith("remember ")||l.startsWith("note ")){let body=l.replace(/^(remember|note)\s+/,"");proposeAction({type:"note.create",title:"Voice note",summary:body,payload:{body},provenance:{source:"voice-command"}}).then(()=>{state.notes.unshift({id:String(Date.now()),title:"Voice note",body,updated:Date.now()});persist();renderNotes();renderAudit()});q("result").innerHTML="<strong>Remembered.</strong>";return}q("result").innerHTML="<strong>Nikky Core planner</strong><p>I would decompose this request, check required Skills, execute low-risk local steps, and route sensitive external actions through approval.</p>"}
 q("run").onclick=()=>{process(q("cmd").value);q("cmd").value=""};q("cmd").addEventListener("keydown",e=>{if(e.key==="Enter")q("run").click()});
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;function startVoice(){document.querySelector('[data-view="voice"]').click();if(!SR){q("result").classList.remove("hidden");q("result").textContent="Speech recognition is not available in this browser.";return}let r=new SR();r.lang="en-US";r.interimResults=true;r.onresult=e=>{let t=[...e.results].map(x=>x[0].transcript).join(" ");q("transcript").textContent=t;if(e.results[e.results.length-1].isFinal)process(t)};r.start()}q("orb").onclick=startVoice;q("micTop").onclick=startVoice;
-function init(){q("calendarMode").value=state.calendarConfig.mode||"mock";q("googleClientId").value=state.calendarConfig.clientId||"";renderCalendarStatus();let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();renderLearning();renderSystem();syncCoreState();runProactiveScan();buildAudit();setInterval(runProactiveScan,5*60*1000);setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
+function init(){q("calendarMode").value=state.calendarConfig.mode||"mock";q("googleClientId").value=state.calendarConfig.clientId||"";renderCalendarStatus();let h=new Date().getHours();q("greeting").textContent=h<12?"Good morning.":h<18?"Good afternoon.":"Good evening.";loadRoutine();renderRoutine();renderEvents();renderSkills();renderNotes();renderApprovals();renderAudit();renderLearning();renderSystem();initIdentity().then(()=>syncCoreState());runProactiveScan();buildAudit();setInterval(runProactiveScan,5*60*1000);setInterval(buildAudit,30*60*1000);if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{})}init();
 </script>
 </body>
 </html>

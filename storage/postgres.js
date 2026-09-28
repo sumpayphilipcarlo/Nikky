@@ -32,6 +32,23 @@ function createPostgresRepository(pool){
    [memory.id,userId,memory.type,JSON.stringify(memory.encryptedValue),memory.source||null,memory.sensitivity||"normal",memory.expiresAt||null]);
   return r.rows[0];
  }
+ async function upsertJob(userId,job){
+  if(!job?.id||!job?.type)throw new Error("job id and type required");
+  const r=await pool.query(
+   `INSERT INTO jobs(id,user_id,type,payload,enabled,interval_ms,next_run_at,last_status,last_error)
+    VALUES($1,$2,$3,$4,$5,$6,$7,NULL,NULL)
+    ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,type=EXCLUDED.type,payload=EXCLUDED.payload,enabled=EXCLUDED.enabled,interval_ms=EXCLUDED.interval_ms,next_run_at=COALESCE(jobs.next_run_at,EXCLUDED.next_run_at)
+    RETURNING *`,
+   [job.id,userId,job.type,JSON.stringify(job.payload||{}),job.enabled!==false,job.intervalMs||60000,job.nextRunAt||new Date()]);
+  return r.rows[0];
+ }
+ async function listMemories(userId,{limit=500}={}){
+  const r=await pool.query("SELECT id,type,encrypted_value,source,sensitivity,expires_at,created_at,updated_at FROM memories WHERE user_id=$1 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY updated_at DESC LIMIT $2",[userId,Math.min(1000,Math.max(1,limit))]);
+  return r.rows;
+ }
+ async function deleteMemory(userId,id){
+  const r=await pool.query("DELETE FROM memories WHERE user_id=$1 AND id=$2",[userId,id]);return r.rowCount>0;
+ }
  async function listDueJobs(at=new Date(),limit=100){
   const r=await pool.query("SELECT * FROM jobs WHERE enabled=TRUE AND next_run_at <= $1 ORDER BY next_run_at ASC LIMIT $2",[at,limit]);
   return r.rows;
@@ -67,10 +84,28 @@ function createPostgresRepository(pool){
   return r.rows[0]||null;
  }
 
+ async function saveRuntimeState(userId,bucket,value){
+  if(!bucket)throw new Error("runtime state bucket required");
+  const r=await pool.query(
+   `INSERT INTO runtime_state(user_id,bucket,value,updated_at) VALUES($1,$2,$3,NOW())
+    ON CONFLICT(user_id,bucket) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()
+    RETURNING bucket,value,updated_at`,
+   [userId,bucket,JSON.stringify(value??null)]);
+  return r.rows[0];
+ }
+ async function loadRuntimeState(userId,bucket){
+  const r=await pool.query("SELECT value FROM runtime_state WHERE user_id=$1 AND bucket=$2",[userId,bucket]);
+  return r.rows[0]?.value??null;
+ }
+ async function loadRuntimeStates(userId,buckets=[]){
+  if(!Array.isArray(buckets)||!buckets.length)return {};
+  const r=await pool.query("SELECT bucket,value FROM runtime_state WHERE user_id=$1 AND bucket = ANY($2::text[])",[userId,buckets]);
+  return Object.fromEntries(r.rows.map(row=>[row.bucket,row.value]));
+ }
  async function appendFeedback(userId,{predictionKey,outcome,context}){
   const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
- return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,appendFeedback,pool};
+ return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listMemories,deleteMemory,upsertJob,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
 }
 module.exports={createPostgresRepository};

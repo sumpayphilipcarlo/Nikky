@@ -107,3 +107,12 @@ CREATE INDEX IF NOT EXISTS idx_workflows_user_state ON workflows(user_id,state);
 CREATE INDEX IF NOT EXISTS idx_jobs_due ON jobs(enabled,next_run_at);
 CREATE INDEX IF NOT EXISTS idx_memory_user_type ON memories(user_id,type);
 CREATE INDEX IF NOT EXISTS idx_commitments_user_status ON commitments(user_id,status);
+
+CREATE TABLE IF NOT EXISTS runtime_state (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bucket TEXT NOT NULL,
+  value JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY(user_id,bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_state_user ON runtime_state(user_id);

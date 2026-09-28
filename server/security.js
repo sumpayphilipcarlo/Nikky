@@ -3,8 +3,20 @@ function securityHeaders(res){
  res.setHeader("X-Content-Type-Options","nosniff");
  res.setHeader("X-Frame-Options","DENY");
  res.setHeader("Referrer-Policy","no-referrer");
- res.setHeader("Permissions-Policy","camera=(), microphone=(), geolocation=()");
+ res.setHeader("Permissions-Policy","camera=(), microphone=(self), geolocation=(self)");
  res.setHeader("Cross-Origin-Resource-Policy","same-site");
+ res.setHeader("Content-Security-Policy",[
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com",
+  "style-src 'self' 'unsafe-inline' https://accounts.google.com",
+  "frame-src https://accounts.google.com",
+  "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://api.open-meteo.com",
+  "img-src 'self' data: https:",
+  "font-src 'self' data:"
+ ].join("; "));
  res.setHeader("Cache-Control","no-store");
  return res;
 }

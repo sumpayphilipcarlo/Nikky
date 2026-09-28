@@ -1,0 +1,116 @@
+services:
+  - type: web
+    name: nikky-core
+    runtime: node
+    region: singapore
+    plan: free
+    autoDeployTrigger: checksPass
+    buildCommand: npm install --omit=dev --ignore-scripts
+    startCommand: npm run start:production
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nikky-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "false"
+      - key: NIKKY_SERVICE_TOKEN
+        generateValue: true
+      - key: NIKKY_MEMORY_KEY
+        generateValue: true
+      - key: NIKKY_SESSION_SECRET
+        generateValue: true
+      - key: NIKKY_DEFAULT_USER_ID
+        value: nikky-owner
+      - key: NIKKY_OWNER_EMAIL
+        sync: false
+      - key: NIKKY_OIDC_ISSUER
+        value: https://accounts.google.com
+      - key: NIKKY_OIDC_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ROUTES_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: HOME_ASSISTANT_URL
+        sync: false
+      - key: HOME_ASSISTANT_TOKEN
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: FCM_PROJECT_ID
+        sync: false
+
+  - type: worker
+    name: nikky-worker
+    runtime: node
+    region: singapore
+    plan: starter
+    autoDeployTrigger: checksPass
+    buildCommand: npm install --omit=dev --ignore-scripts
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nikky-db
+          property: connectionString
+      - key: DATABASE_SSL
+        value: "false"
+      - key: NIKKY_SERVICE_TOKEN
+        fromService:
+          type: web
+          name: nikky-core
+          envVarKey: NIKKY_SERVICE_TOKEN
+      - key: NIKKY_MEMORY_KEY
+        fromService:
+          type: web
+          name: nikky-core
+          envVarKey: NIKKY_MEMORY_KEY
+      - key: NIKKY_SESSION_SECRET
+        fromService:
+          type: web
+          name: nikky-core
+          envVarKey: NIKKY_SESSION_SECRET
+      - key: NIKKY_DEFAULT_USER_ID
+        fromService:
+          type: web
+          name: nikky-core
+          envVarKey: NIKKY_DEFAULT_USER_ID
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: HOME_ASSISTANT_URL
+        sync: false
+      - key: HOME_ASSISTANT_TOKEN
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: FCM_PROJECT_ID
+        sync: false
+
+databases:
+  - name: nikky-db
+    databaseName: nikky
+    region: singapore
+    plan: free
+    postgresMajorVersion: 18

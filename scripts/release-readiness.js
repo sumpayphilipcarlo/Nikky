@@ -17,6 +17,10 @@ function evaluate({env=process.env}={}){
  add("core-tests","quality",packageJson.scripts?.test?.includes("security-check.js"),"Full test command includes security gate");
  add("backend","architecture",exists("server/production.js"),"Production backend entrypoint exists");
  add("worker","architecture",exists("server/worker-entry.js"),"Background worker entrypoint exists");
+ add("same-origin-pwa","architecture",read("server/index.js").includes("STATIC_ASSETS"),"Production core serves the functional PWA on the same origin");
+ add("runtime-state","persistence",read("storage/schema.sql").includes("runtime_state")&&read("server/runtime.js").includes("restoreRuntimeState"),"Fabric, missions, approvals, audit, idempotency, authority policy and Guardian state restore from PostgreSQL");
+ add("encrypted-memory-runtime","persistence",read("server/runtime.js").includes("persistMemoryRecord")&&read("server/runtime.js").includes("restoreMemories"),"User memory is encrypted and restored from PostgreSQL");
+ add("deployment-blueprint","deployment",exists("render.yaml"),"Production web, worker and PostgreSQL Blueprint exists");
  add("postgres","persistence",exists("storage/postgres.js")&&exists("storage/schema.sql"),"PostgreSQL repository and schema exist");
  add("auth","security",exists("server/auth.js")&&exists("server/oidc.js"),"Session and OIDC auth modules exist");
  add("secrets","security",exists("core/provider-credentials.js")&&exists("core/secrets.js"),"Encrypted provider credential modules exist");
@@ -37,6 +41,9 @@ function evaluate({env=process.env}={}){
  add("android-source","native",exists("clients/android/app/src/main/AndroidManifest.xml")&&exists("clients/android/app/src/main/java/com/nikky/assistant/MainActivity.kt"),"Android source shell exists");
  add("ios-source","native",exists("clients/ios/Package.swift")&&exists("clients/ios/Sources/NikkyIOS/NikkyClient.swift"),"iOS Swift source shell exists");
  add("desktop-source","native",exists("clients/desktop/src-tauri/Cargo.toml")&&exists("clients/desktop/src-tauri/src/lib.rs"),"Tauri/Rust source shell exists");
+ const ci=read(".github/workflows/core-ci.yml");
+ add("native-compile-ci","native",ci.includes("native-android:")&&ci.includes("native-ios:")&&ci.includes("native-desktop:"),"Android, iOS and desktop source compile in CI");
+ add("docker-build-ci","deployment",ci.includes("docker-build:"),"Production Docker image builds in CI");
  add("docker","deployment",exists("deploy/Dockerfile")&&exists("deploy/docker-compose.yml"),"Container deployment files exist");
  for(const name of requiredEnv)add("env-example-"+name,"configuration",defined.includes(name),name+" documented in .env.example");
  for(const name of providerEnv)add("provider-env-"+name,"configuration",defined.includes(name),name+" documented for provider activation",false);

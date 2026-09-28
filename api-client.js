@@ -18,6 +18,7 @@
   }
   return {
    health:()=>request("/health"),
+   authConfig:()=>request("/auth/config"),
    session:()=>request("/auth/session"),
    login:idToken=>request("/auth/session",{method:"POST",body:{idToken}}),
    devLogin:devUserId=>request("/auth/session",{method:"POST",body:{devUserId}}),
@@ -30,6 +31,9 @@
    fabric:()=>request("/v1/fabric"),
    registerEndpoint:endpoint=>request("/v1/fabric/endpoints",{method:"POST",body:endpoint}),
    resolveCapability:(capability,options={})=>request("/v1/fabric/resolve",{method:"POST",body:{capability,options}}),
+   policies:()=>request("/v1/policies"),
+   addPolicy:policy=>request("/v1/policies",{method:"POST",body:policy}),
+   deletePolicy:id=>request("/v1/policies/"+encodeURIComponent(id),{method:"DELETE"}),
    permissions:()=>request("/v1/permissions"),
    grantPermission:grant=>request("/v1/permissions",{method:"POST",body:grant}),
    missions:()=>request("/v1/missions"),
