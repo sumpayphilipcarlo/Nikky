@@ -14,6 +14,8 @@ async function startWorker(){
  await repository.upsertUser({id:userId});
  const providers=await buildStoredProviders({repository,userId,keyMaterial:config.memoryKey});
  const runtime=createRuntime({workflowRepository:repository,userId,providers});
+ await runtime.restoreWorkflows();
+ await runtime.restoreRuntimeState();
  const handlers={
   "runtime.scheduler.tick":async()=>runtime.scheduler.tick(),
   "provider.health":async job=>({provider:job.payload?.provider||"unknown",status:"scheduled-check"})
