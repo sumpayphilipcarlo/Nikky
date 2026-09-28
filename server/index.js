@@ -203,6 +203,14 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="POST"&&url.pathname==="/v1/goals/plan"){
    const body=await readJson(req);return json(res,200,appRuntime.goalPlanner.plan(body));
   }
+  if(req.method==="GET"&&url.pathname==="/v1/policies")return json(res,200,{policies:appRuntime.policyStore.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/policies"){
+   const body=await readJson(req);const value=appRuntime.policyStore.add(body);await appRuntime.persistRuntimeState?.("authority_policies");return json(res,201,value);
+  }
+  if(req.method==="DELETE"&&url.pathname.startsWith("/v1/policies/")){
+   const id=decodeURIComponent(url.pathname.slice("/v1/policies/".length));
+   const deleted=appRuntime.policyStore.remove(id);await appRuntime.persistRuntimeState?.("authority_policies");return json(res,200,{deleted});
+  }
   if(req.method==="GET"&&url.pathname==="/v1/permissions")return json(res,200,{permissions:appRuntime.capabilityPermissions.list()});
   if(req.method==="POST"&&url.pathname==="/v1/permissions"){const body=await readJson(req);const value=appRuntime.capabilityPermissions.grant(body);await appRuntime.persistRuntimeState?.("capability_permissions");return json(res,201,value)}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/permissions/")){
