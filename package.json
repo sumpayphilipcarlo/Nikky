@@ -1,9 +1,9 @@
 {
   "name": "nikky",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "scripts": {
-    "test": "node tests/core.test.js && node tests/backend.test.js && node tests/e2e-scenarios.test.js && node tests/ui-static.test.js && node tests/native-static.test.js && node tests/operations.test.js && node scripts/security-check.js && node scripts/release-readiness.js",
+    "test": "node tests/core.test.js && node tests/backend.test.js && node tests/e2e-scenarios.test.js && node tests/ui-static.test.js && node tests/native-static.test.js && node tests/operations.test.js && node tests/fabric-guardian.test.js && node scripts/security-check.js && node scripts/release-readiness.js",
     "start": "node server/index.js",
     "test:core": "node tests/core.test.js",
     "test:backend": "node tests/backend.test.js",
@@ -17,7 +17,8 @@
     "readiness": "node scripts/release-readiness.js",
     "backup": "node scripts/backup.js",
     "restore": "node scripts/restore.js",
-    "test:operations": "node tests/operations.test.js"
+    "test:operations": "node tests/operations.test.js",
+    "test:fabric": "node tests/fabric-guardian.test.js"
   },
   "dependencies": {
     "pg": "^8.13.1"
