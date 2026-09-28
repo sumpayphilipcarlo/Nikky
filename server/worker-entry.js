@@ -8,7 +8,7 @@ const {buildStoredProviders}=require("./provider-bootstrap.js");
 async function startWorker(){
  const {config}=assertValidConfig(process.env);
  if(!config.databaseUrl)throw new Error("DATABASE_URL is required for worker");
- const pool=createPostgresPool({connectionString:config.databaseUrl,ssl:String(process.env.DATABASE_SSL||"false")==="true"});
+ const pool=createPostgresPool({connectionString:config.databaseUrl,ssl:String(process.env.DATABASE_SSL||"false")==="true",sslCa:process.env.DATABASE_SSL_CA||null});
  const repository=createPostgresRepository(pool);
  const userId=process.env.NIKKY_DEFAULT_USER_ID||"default-user";
  await repository.upsertUser({id:userId});
