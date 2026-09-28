@@ -11,7 +11,8 @@ function loadConfig(env=process.env){
   oidcIssuer:env.NIKKY_OIDC_ISSUER||"",
   oidcClientId:env.NIKKY_OIDC_CLIENT_ID||"",
   allowDevLogin:String(env.NIKKY_ALLOW_DEV_LOGIN||"false").toLowerCase()==="true",
-  defaultUserId:env.NIKKY_DEFAULT_USER_ID||""
+  defaultUserId:env.NIKKY_DEFAULT_USER_ID||"",
+  ownerEmail:(env.NIKKY_OWNER_EMAIL||"").trim().toLowerCase()
  };
  const warnings=[],errors=[];
  if(!Number.isFinite(config.port)||config.port<1||config.port>65535)errors.push("PORT must be a valid TCP port");
@@ -27,7 +28,7 @@ function loadConfig(env=process.env){
   if(!config.sessionSecret)errors.push("NIKKY_SESSION_SECRET is required in production");
   if(config.allowDevLogin)errors.push("NIKKY_ALLOW_DEV_LOGIN must be false in production");
   if(!config.oidcIssuer||!config.oidcClientId)warnings.push("OIDC is not fully configured; interactive user login will be unavailable");
-  if(config.oidcIssuer&&config.oidcClientId&&!config.defaultUserId)warnings.push("NIKKY_DEFAULT_USER_ID should match the authorized OIDC subject for single-user production login");
+  if(config.oidcIssuer&&config.oidcClientId&&!config.defaultUserId&&!config.ownerEmail)warnings.push("Configure NIKKY_OWNER_EMAIL or NIKKY_DEFAULT_USER_ID to scope interactive production login");
   if(!config.databaseUrl)warnings.push("DATABASE_URL is not configured; production persistence will not use PostgreSQL");
  }
  return {config,warnings,errors,valid:errors.length===0};
