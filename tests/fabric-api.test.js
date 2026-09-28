@@ -16,7 +16,8 @@ const {createServer}=require("../server/index.js");
  const server=createServer({runtime});
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
  const base="http://127.0.0.1:"+server.address().port;
- const headers={authorization:"Bearer fabric-api-test-token","content-type":"application/json"};
+ const authToken=process.env.NIKKY_SERVICE_TOKEN;
+ const headers={authorization:["Bearer",authToken].join(" "),"content-type":"application/json"};
 
  let res=await fetch(base+"/v1/fabric",{headers});
  assert.equal(res.status,200);
