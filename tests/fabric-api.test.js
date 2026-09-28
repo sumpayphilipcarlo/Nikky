@@ -40,6 +40,20 @@ const {createServer}=require("../server/index.js");
  assert.equal(fabricExecutions.length,1);
  assert.equal(fabricExecutions[0].endpoint,"phone");
 
+ // A scoped AUTO rule must not bypass a capability explicitly configured for approval.
+ runtime.policyStore.add({id:"auto-ride",actionType:"ride.book",effect:"allow"});
+ runtime.capabilityPermissions.grant({subjectId:"phone",capability:"ride.book",mode:"approval"});
+ res=await fetch(base+"/v1/actions/propose",{method:"POST",headers,body:JSON.stringify({type:"ride.book",payload:{destination:"Office"},meta:{useFabric:true,endpointId:"phone"},idempotencyKey:"ride-policy-approval"})});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.result.status,"approval_required");
+ assert.equal(fabricExecutions.length,1);
+
+ // Trusted capability plus explicit scoped pre-authorization may run without review.
+ runtime.capabilityPermissions.grant({subjectId:"phone",capability:"ride.book",mode:"trusted"});
+ res=await fetch(base+"/v1/actions/propose",{method:"POST",headers,body:JSON.stringify({type:"ride.book",payload:{destination:"Office"},meta:{useFabric:true,endpointId:"phone"},idempotencyKey:"ride-policy-trusted"})});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.result.status,"executed");
+ assert.equal(fabricExecutions.length,2);
+
+
  res=await fetch(base+"/v1/missions",{method:"POST",headers,body:JSON.stringify({goal:"Book a ride",steps:[{capability:"ride.book",payload:{destination:"Airport"}}]})});
  assert.equal(res.status,201);body=await res.json();assert.equal(body.goal,"Book a ride");
  const missionId=body.id;
