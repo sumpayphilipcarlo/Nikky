@@ -39,8 +39,15 @@ const {createServer}=require("../server/index.js");
  assert.equal(fabricExecutions.length,1);
  assert.equal(fabricExecutions[0].endpoint,"phone");
 
- res=await fetch(base+"/v1/missions",{method:"POST",headers,body:JSON.stringify({goal:"Book a ride",steps:[{capability:"ride.book"}]})});
+ res=await fetch(base+"/v1/missions",{method:"POST",headers,body:JSON.stringify({goal:"Book a ride",steps:[{capability:"ride.book",payload:{destination:"Airport"}}]})});
  assert.equal(res.status,201);body=await res.json();assert.equal(body.goal,"Book a ride");
+ const missionId=body.id;
+ res=await fetch(base+"/v1/missions/"+encodeURIComponent(missionId)+"/run",{method:"POST",headers});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.state,"waiting_user");assert.ok(body.approvalId);
+ res=await fetch(base+"/v1/approvals/"+encodeURIComponent(body.approvalId)+"/approve",{method:"POST",headers});
+ assert.equal(res.status,200);
+ res=await fetch(base+"/v1/missions/"+encodeURIComponent(missionId),{headers});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.state,"completed");
 
  res=await fetch(base+"/v1/transactions/evaluate",{method:"POST",headers,body:JSON.stringify({transaction:{type:"bill.pay",recipient:"PowerCo",amount:2000},policy:{mode:"trusted",maxAmount:3000,allowedRecipients:["PowerCo"]}})});
  assert.equal(res.status,200);body=await res.json();assert.equal(body.requiresReview,false);
