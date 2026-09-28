@@ -246,10 +246,10 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="POST"&&url.pathname==="/v1/guardian/policies"){const body=await readJson(req);const value=appRuntime.emergencyPolicies.upsert(body);await appRuntime.persistRuntimeState?.("emergency_policies");return json(res,201,value)}
   if(req.method==="GET"&&url.pathname==="/v1/guardian/policies")return json(res,200,{policies:appRuntime.emergencyPolicies.list()});
   if(req.method==="GET"&&url.pathname==="/v1/memory")return json(res,200,{records:appRuntime.memory.list()});
-  if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);return json(res,201,appRuntime.memory.put(body))}
+  if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);const value=appRuntime.memory.put(body);await appRuntime.persistMemoryRecord?.(value);return json(res,201,value)}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/memory/")){
    const id=decodeURIComponent(url.pathname.slice("/v1/memory/".length));
-   return json(res,200,{deleted:appRuntime.memory.remove(id)});
+   const deleted=appRuntime.deleteMemoryRecord?await appRuntime.deleteMemoryRecord(id):appRuntime.memory.remove(id);return json(res,200,{deleted});
   }
   if(req.method==="POST"&&url.pathname==="/v1/actions/propose"){const body=await readJson(req);return json(res,200,await appRuntime.propose(body))}
   if(req.method==="POST"&&url.pathname.startsWith("/v1/approvals/")&&url.pathname.endsWith("/approve")){
