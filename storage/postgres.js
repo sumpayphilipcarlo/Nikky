@@ -42,6 +42,13 @@ function createPostgresRepository(pool){
    [job.id,userId,job.type,JSON.stringify(job.payload||{}),job.enabled!==false,job.intervalMs||60000,job.nextRunAt||new Date()]);
   return r.rows[0];
  }
+ async function listMemories(userId,{limit=500}={}){
+  const r=await pool.query("SELECT id,type,encrypted_value,source,sensitivity,expires_at,created_at,updated_at FROM memories WHERE user_id=$1 AND (expires_at IS NULL OR expires_at > NOW()) ORDER BY updated_at DESC LIMIT $2",[userId,Math.min(1000,Math.max(1,limit))]);
+  return r.rows;
+ }
+ async function deleteMemory(userId,id){
+  const r=await pool.query("DELETE FROM memories WHERE user_id=$1 AND id=$2",[userId,id]);return r.rowCount>0;
+ }
  async function listDueJobs(at=new Date(),limit=100){
   const r=await pool.query("SELECT * FROM jobs WHERE enabled=TRUE AND next_run_at <= $1 ORDER BY next_run_at ASC LIMIT $2",[at,limit]);
   return r.rows;
@@ -99,6 +106,6 @@ function createPostgresRepository(pool){
   const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
- return {upsertUser,saveWorkflow,listWorkflows,saveMemory,upsertJob,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
+ return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listMemories,deleteMemory,upsertJob,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
 }
 module.exports={createPostgresRepository};
