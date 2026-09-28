@@ -104,7 +104,12 @@ const Orchestrator=require("../orchestrator.js");
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
  const port=server.address().port;
  const base="http://127.0.0.1:"+port;
- let res=await fetch(base+"/");
+ let res=await fetch(base+"/auth/config");
+ assert.equal(res.status,200);
+ let authCfg=await res.json();
+ assert.equal(authCfg.configured,false);
+
+ res=await fetch(base+"/");
  assert.equal(res.status,200);
  assert.match(res.headers.get("content-type")||"",/text\/html/);
  const homeHtml=await res.text();
