@@ -28,6 +28,10 @@ const {createSensorFusion}=require("../core/sensor-fusion.js");
 const {createGuardian}=require("../core/guardian.js");
 const {createEmergencyPolicyStore}=require("../core/emergency-policy.js");
 const {createAppController}=require("../core/app-controller.js");
+const {createDiscoveryManager}=require("../core/discovery.js");
+const {createGoalPlanner}=require("../core/goal-planner.js");
+const {createMissionRunner}=require("../core/mission-runner.js");
+const {createFabricPolicy}=require("../core/fabric-policy.js");
 
 function payload(action){return action?.payload&&typeof action.payload==="object"?action.payload:{}}
 function field(action,name,...aliases){
@@ -92,11 +96,20 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const transactionSafety=createTransactionSafety({now});
  const sensorFusion=createSensorFusion({now});
  const emergencyPolicies=createEmergencyPolicyStore();
+ const fabricPolicy=createFabricPolicy({permissions:capabilityPermissions,transactionSafety});
  const appController=createAppController({
    fabric,
    executors:providers.fabricExecutors||{},
-   verify:providers.fabricVerify
+   verify:providers.fabricVerify,
+   authority:async(action)=>{
+     const endpointId=action?.meta?.endpointId;
+     if(!endpointId)return {allowed:true};
+     const decision=fabricPolicy.evaluate({endpointId,capability:action.type,payload:payload(action)});
+     return {allowed:decision.allowed,reason:decision.reason||null};
+   }
  });
+ const discovery=createDiscoveryManager({fabric,adapters:providers.discoveryAdapters||[]});
+ const goalPlanner=createGoalPlanner({fabric});
  const approvals=[],audit=[];
  const credentialVault=providers.credentialVault||null;
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -175,6 +188,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
+ const missionRunner=createMissionRunner({planner:missionPlanner,proposeAction:propose});
  const guardian=createGuardian({
   sensorFusion,now,
   notify:async incident=>propose({type:"proactive.notify",title:"Guardian alert",summary:"Potential "+incident.type+" incident detected",payload:{incidentId:incident.id,severity:incident.level},idempotencyKey:"guardian-notify-"+incident.id}),
@@ -188,6 +202,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,appController,missionPlanner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
