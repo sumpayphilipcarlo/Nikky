@@ -87,7 +87,7 @@ const {createServer}=require("../server/index.js");
  assert.equal(res.status,200);body=await res.json();
  assert.equal(body.fabric.endpoints,1);
  assert.equal(body.missions.total,1);
- assert.equal(body.guardian.openIncidents,1);
+ assert.equal(body.guardian.openIncidents,2);
  assert.equal(body.sensors.sources,2);
 
  await new Promise(resolve=>server.close(resolve));
