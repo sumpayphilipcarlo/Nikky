@@ -166,7 +166,7 @@ async function handler(req,res,runtimeOverride=runtime){
    const body=await readJson(req);return json(res,200,appRuntime.fabric.resolve(body.capability,body.options||{}));
   }
   if(req.method==="POST"&&url.pathname==="/v1/fabric/discover"){
-   const body=await readJson(req);return json(res,200,await appRuntime.discovery.scan(body||{}));
+   const body=await readJson(req);const value=await appRuntime.discovery.scan(body||{});await appRuntime.persistRuntimeState?.("fabric");return json(res,200,value);
   }
   if(req.method==="POST"&&url.pathname==="/v1/goals/plan"){
    const body=await readJson(req);return json(res,200,appRuntime.goalPlanner.plan(body));
