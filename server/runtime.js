@@ -4,6 +4,7 @@ const Orchestrator=require("../orchestrator.js");
 const {createMemoryStore,seal,open}=require("../core/memory.js");
 const {createIdentityService}=require("../core/identity.js");
 const {createScheduler}=require("../core/scheduler.js");
+const {createNotificationCenter}=require("../core/notifications.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
 const Risk=require("../core/risk.js");
 const Workflow=require("../core/workflow-engine.js");
@@ -85,6 +86,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const memory=createMemoryStore({now:()=>new Date(now())});
  const identity=createIdentityService({now});
  const scheduler=createScheduler({now});
+ const notificationCenter=createNotificationCenter({now});
  const metrics=createMetrics();
  const auditLedger=createAuditLedger();
  const providerHealth=createProviderHealth({now});
@@ -124,10 +126,30 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const providerExecutor=createActionExecutor({gmail,twilio,calendar,push,slack,microsoft365,whatsapp,homeAssistant,spotify,providerHealth});
  const executor=async action=>{
   const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
-  if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
-  const executeOnce=()=>action?.meta?.useFabric===true
-    ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
-    : providerExecutor(action);
+  if(!key)return {ok:false,live:false,reason:"idempotency key is required for action execution"};
+  const executeOnce=async()=>{
+    if(action?.type==="note.create"){
+      const p=payload(action),id=p.id||("note_"+now().toString(36)+"_"+Math.random().toString(36).slice(2,7));
+      const rec=memory.put({id,type:p.type||"note",value:{title:action.title||p.title||"Note",body:p.body||action.summary||""},source:action?.provenance?.source||"nikky",sensitivity:p.sensitivity||"normal"});
+      await persistMemoryRecord(rec);
+      return {ok:true,live:true,source:"nikky-memory",recordId:id};
+    }
+    if(action?.type==="proactive.notify"){
+      const p=payload(action),notice={type:p.type||"notification",title:action.title||p.title||"Nikky",body:action.summary||p.body||p.message||"",priority:Number(p.priority||action?.meta?.priority||80),dedupeKey:p.dedupeKey||key,data:p};
+      if(!notificationCenter.shouldDeliver(notice))return {ok:true,live:true,source:"nikky-notification",deduplicated:true};
+      const item=notificationCenter.record(notice,"in-app","delivered");
+      await persistRuntimeState("notifications");
+      const deviceToken=p.deviceToken||env.NIKKY_PRIMARY_DEVICE_TOKEN;
+      if(deviceToken&&push?.send){
+        const pushed=await push.send({deviceToken,title:notice.title,body:notice.body,data:{notificationId:item.dedupeKey||key}});
+        return {ok:true,live:true,source:"nikky-notification",notification:item,push:pushed};
+      }
+      return {ok:true,live:true,source:"nikky-notification",notification:item};
+    }
+    return action?.meta?.useFabric===true
+      ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
+      : providerExecutor(action);
+  };
   const run=await idempotency.run(key,executeOnce);
   if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
   await persistRuntimeState?.("idempotency");
@@ -251,6 +273,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   audit_ledger:()=>auditLedger.exportAll(),
   idempotency:()=>idempotency.snapshot(),
   authority_policies:()=>policyStore.snapshot(),
+  notifications:()=>notificationCenter.snapshot(),
   fabric:()=>fabric.snapshot(),
   capability_permissions:()=>capabilityPermissions.snapshot(),
   missions:()=>missionPlanner.snapshot(),
@@ -277,6 +300,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   if(states.audit_ledger)auditLedger.restore(states.audit_ledger);
   if(states.idempotency)idempotency.restore(states.idempotency);
   if(states.authority_policies)policyStore.restore(states.authority_policies);
+  if(states.notifications)notificationCenter.restore(states.notifications);
   if(states.fabric)fabric.restore(states.fabric);
   if(states.capability_permissions)capabilityPermissions.restore(states.capability_permissions);
   if(states.missions)missionPlanner.restore(states.missions);
@@ -293,6 +317,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {userId,memory,persistMemoryRecord,deleteMemoryRecord,restoreMemories,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
+ return {userId,memory,persistMemoryRecord,deleteMemoryRecord,restoreMemories,identity,scheduler,notificationCenter,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
 }
 module.exports={createRuntime,createActionExecutor};
