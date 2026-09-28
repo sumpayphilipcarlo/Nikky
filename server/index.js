@@ -137,7 +137,11 @@ async function handler(req,res,runtimeOverride=runtime){
     approvalsPending:appRuntime.approvals.filter(a=>!a.status||a.status==="pending").length,
     workflows:{total:workflows.length,states:workflowStates},
     auditIntegrity:appRuntime.auditLedger?.verify?.()||null,
-    metrics:appRuntime.metrics.snapshot()
+    metrics:appRuntime.metrics.snapshot(),
+    fabric:{endpoints:appRuntime.fabric?.list?.().length||0},
+    missions:{total:appRuntime.missionPlanner?.list?.().length||0},
+    guardian:{openIncidents:(appRuntime.guardian?.list?.()||[]).filter(i=>i.status==="open").length},
+    sensors:{sources:appRuntime.sensorFusion?.health?.().length||0}
    });
   }
   if(req.method==="GET"&&url.pathname==="/v1/approvals")return json(res,200,{approvals:appRuntime.approvals});
