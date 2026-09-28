@@ -32,6 +32,16 @@ function createPostgresRepository(pool){
    [memory.id,userId,memory.type,JSON.stringify(memory.encryptedValue),memory.source||null,memory.sensitivity||"normal",memory.expiresAt||null]);
   return r.rows[0];
  }
+ async function upsertJob(userId,job){
+  if(!job?.id||!job?.type)throw new Error("job id and type required");
+  const r=await pool.query(
+   `INSERT INTO jobs(id,user_id,type,payload,enabled,interval_ms,next_run_at,last_status,last_error)
+    VALUES($1,$2,$3,$4,$5,$6,$7,NULL,NULL)
+    ON CONFLICT(id) DO UPDATE SET user_id=EXCLUDED.user_id,type=EXCLUDED.type,payload=EXCLUDED.payload,enabled=EXCLUDED.enabled,interval_ms=EXCLUDED.interval_ms,next_run_at=COALESCE(jobs.next_run_at,EXCLUDED.next_run_at)
+    RETURNING *`,
+   [job.id,userId,job.type,JSON.stringify(job.payload||{}),job.enabled!==false,job.intervalMs||60000,job.nextRunAt||new Date()]);
+  return r.rows[0];
+ }
  async function listDueJobs(at=new Date(),limit=100){
   const r=await pool.query("SELECT * FROM jobs WHERE enabled=TRUE AND next_run_at <= $1 ORDER BY next_run_at ASC LIMIT $2",[at,limit]);
   return r.rows;
@@ -89,6 +99,6 @@ function createPostgresRepository(pool){
   const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
- return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
+ return {upsertUser,saveWorkflow,listWorkflows,saveMemory,upsertJob,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
 }
 module.exports={createPostgresRepository};
