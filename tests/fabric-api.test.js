@@ -52,7 +52,7 @@ const {createServer}=require("../server/index.js");
  res=await fetch(base+"/v1/actions/propose",{method:"POST",headers,body:JSON.stringify({type:"ride.book",payload:{destination:"Office"},meta:{useFabric:true,endpointId:"phone"},idempotencyKey:"ride-policy-trusted"})});
  assert.equal(res.status,200);body=await res.json();assert.equal(body.result.status,"executed");
  assert.equal(fabricExecutions.length,2);
-
+ runtime.policyStore.remove("auto-ride");
 
  res=await fetch(base+"/v1/missions",{method:"POST",headers,body:JSON.stringify({goal:"Book a ride",steps:[{capability:"ride.book",payload:{destination:"Airport"}}]})});
  assert.equal(res.status,201);body=await res.json();assert.equal(body.goal,"Book a ride");
