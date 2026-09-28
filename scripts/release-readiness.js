@@ -33,6 +33,7 @@ function evaluate({env=process.env}={}){
  add("transaction-safety","security",exists("core/transaction-safety.js")&&exists("core/fabric-policy.js"),"Financial and Fabric execution safeguards exist");
  add("guardian","safety",exists("core/guardian.js")&&exists("core/sensor-fusion.js")&&exists("core/emergency-policy.js"),"Guardian sensor fusion and policy engine exist");
  add("iot-contracts","native",exists("providers/matter.js")&&exists("providers/mqtt.js"),"Matter and MQTT adapter contracts exist");
+ add("approval-preview","security",exists("tests/approval-transparency.test.js"),"Redacted consequential-action preview tests exist");
  add("android-source","native",exists("clients/android/app/src/main/AndroidManifest.xml")&&exists("clients/android/app/src/main/java/com/nikky/assistant/MainActivity.kt"),"Android source shell exists");
  add("ios-source","native",exists("clients/ios/Package.swift")&&exists("clients/ios/Sources/NikkyIOS/NikkyClient.swift"),"iOS Swift source shell exists");
  add("desktop-source","native",exists("clients/desktop/src-tauri/Cargo.toml")&&exists("clients/desktop/src-tauri/src/lib.rs"),"Tauri/Rust source shell exists");
