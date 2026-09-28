@@ -22,6 +22,12 @@ function evaluate({env=process.env}={}){
  add("secrets","security",exists("core/provider-credentials.js")&&exists("core/secrets.js"),"Encrypted provider credential modules exist");
  add("audit","security",exists("core/audit-ledger.js")||exists("core/audit-chain.js"),"Tamper-evident audit module exists");
  add("threat-model","security",exists("docs/THREAT_MODEL.md"),"Threat model exists");
+ add("operations-runbook","operations",exists("docs/OPERATIONS.md"),"Operations runbook exists");
+ add("backup-restore","operations",exists("storage/backup.js")&&exists("scripts/backup.js")&&exists("scripts/restore.js"),"Backup/restore tooling exists");
+ add("liveness-readiness","operations",exists("server/monitoring.js")&&exists("server/lifecycle.js"),"Monitoring and graceful lifecycle modules exist");
+ add("wake-word-core","native",exists("core/wake-word.js"),"Wake-word lifecycle boundary exists");
+ add("speaker-verification","native",exists("core/speaker-verification.js"),"Optional speaker verification policy exists");
+ add("active-context","native",exists("core/active-context.js"),"Permission-gated active context model exists");
  add("android-source","native",exists("clients/android/app/src/main/AndroidManifest.xml")&&exists("clients/android/app/src/main/java/com/nikky/assistant/MainActivity.kt"),"Android source shell exists");
  add("ios-source","native",exists("clients/ios/Package.swift")&&exists("clients/ios/Sources/NikkyIOS/NikkyClient.swift"),"iOS Swift source shell exists");
  add("desktop-source","native",exists("clients/desktop/src-tauri/Cargo.toml")&&exists("clients/desktop/src-tauri/src/lib.rs"),"Tauri/Rust source shell exists");

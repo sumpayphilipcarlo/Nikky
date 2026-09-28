@@ -13,7 +13,7 @@ function walk(dir){
   if(skip.has(ent.name))continue;
   const p=path.join(dir,ent.name);
   if(ent.isDirectory())walk(p);
-  else if(/\.(js|json|md|yml|yaml|env|html|sql)$/i.test(ent.name)||ent.name===".env.example"){
+  else if(/\.(js|json|md|yml|yaml|env|html|sql|kt|kts|swift|rs|toml|xml)$/i.test(ent.name)||ent.name===".env.example"){
    const text=fs.readFileSync(p,"utf8");
    for(const r of risky)if(r.re.test(text))findings.push({file:path.relative(root,p),rule:r.name});
   }
