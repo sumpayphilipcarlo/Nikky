@@ -20,6 +20,18 @@ const {createMicrosoft365Adapter}=require("../providers/microsoft365.js");
 const {createWhatsAppAdapter}=require("../providers/whatsapp.js");
 const {createHomeAssistantAdapter}=require("../providers/home-assistant.js");
 const {createSpotifyAdapter}=require("../providers/spotify.js");
+const {createFabric}=require("../core/fabric.js");
+const {createMissionPlanner}=require("../core/mission-planner.js");
+const {createCapabilityPermissions}=require("../core/app-permissions.js");
+const {createTransactionSafety}=require("../core/transaction-safety.js");
+const {createSensorFusion}=require("../core/sensor-fusion.js");
+const {createGuardian}=require("../core/guardian.js");
+const {createEmergencyPolicyStore}=require("../core/emergency-policy.js");
+const {createAppController}=require("../core/app-controller.js");
+const {createDiscoveryManager}=require("../core/discovery.js");
+const {createGoalPlanner}=require("../core/goal-planner.js");
+const {createMissionRunner}=require("../core/mission-runner.js");
+const {createFabricPolicy}=require("../core/fabric-policy.js");
 
 function payload(action){return action?.payload&&typeof action.payload==="object"?action.payload:{}}
 function field(action,name,...aliases){
@@ -78,6 +90,26 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const providerHealth=createProviderHealth({now});
  const policyStore=createPolicyEngine();
  const idempotency=createIdempotencyStore({now});
+ const fabric=createFabric({now:()=>new Date(now())});
+ const capabilityPermissions=createCapabilityPermissions();
+ const missionPlanner=createMissionPlanner({fabric,now:()=>new Date(now())});
+ const transactionSafety=createTransactionSafety({now});
+ const sensorFusion=createSensorFusion({now});
+ const emergencyPolicies=createEmergencyPolicyStore();
+ const fabricPolicy=createFabricPolicy({permissions:capabilityPermissions,transactionSafety});
+ const appController=createAppController({
+   fabric,
+   executors:providers.fabricExecutors||{},
+   verify:providers.fabricVerify,
+   authority:async(action)=>{
+     const endpointId=action?.meta?.endpointId;
+     if(!endpointId)return {allowed:true};
+     const decision=fabricPolicy.evaluate({endpointId,capability:action.type,payload:payload(action)});
+     return {allowed:decision.allowed,reason:decision.reason||null};
+   }
+ });
+ const discovery=createDiscoveryManager({fabric,adapters:providers.discoveryAdapters||[]});
+ const goalPlanner=createGoalPlanner({fabric});
  const approvals=[],audit=[];
  const credentialVault=providers.credentialVault||null;
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -93,7 +125,10 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const executor=async action=>{
   const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
   if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
-  const run=await idempotency.run(key,()=>providerExecutor(action));
+  const executeOnce=()=>action?.meta?.useFabric===true
+    ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
+    : providerExecutor(action);
+  const run=await idempotency.run(key,executeOnce);
   if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
   return {...run.result,deduplicated:run.deduplicated};
  };
@@ -140,6 +175,19 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    else if(result.status==="execution_failed"||result.status==="approved_no_executor")Workflow.transition(wf,Workflow.STATES.FAILED,result.status);
   }
   if(wf)await persistWorkflow(wf);
+  if(result.status==="executed"&&item?.action?.meta?.missionId&&item?.action?.meta?.missionStepId){
+   const missionId=item.action.meta.missionId,stepId=item.action.meta.missionStepId;
+   try{
+    missionPlanner.completeStep(missionId,stepId,result);
+    const mission=missionPlanner.get(missionId);
+    if(mission&&mission.state!=="completed"){
+     missionPlanner.transition(missionId,"running",{waitingFor:null,approvalId:null});
+     await missionRunner.run(missionId);
+    }
+   }catch(error){
+    auditLedger.append({actor:"nikky-core",actionType:"mission.advance",decision:"failed",metadata:{missionId,stepId,error:error.message}});
+   }
+  }
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
@@ -153,12 +201,20 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
+ const missionRunner=createMissionRunner({planner:missionPlanner,proposeAction:propose});
+ const guardian=createGuardian({
+  sensorFusion,now,
+  notify:async incident=>propose({type:"proactive.notify",title:"Guardian alert",summary:"Potential "+incident.type+" incident detected",payload:{incidentId:incident.id,severity:incident.level},idempotencyKey:"guardian-notify-"+incident.id}),
+  contactTrusted:async incident=>propose({type:"sms.send",payload:{recipient:incident.policy?.trustedContacts?.[0],body:"Nikky Guardian detected a potential "+incident.type+" emergency. Incident "+incident.id},idempotencyKey:"guardian-contact-"+incident.id}),
+  requestProfessionalHelp:providers.requestProfessionalHelp||null
+ });
+
  async function restoreWorkflows({state,limit=200}={}){
   if(!workflowRepository?.listWorkflows)return [];
   const rows=await workflowRepository.listWorkflows(userId,{state,limit});
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};

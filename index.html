@@ -176,6 +176,8 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <article class="card"><h3>Provider connections</h3><div id="systemProviders" class="list"></div></article>
     <article class="card"><h3>Provider health</h3><div id="systemHealth" class="list"></div></article>
     <article class="card"><h3>Workflow state</h3><div id="systemWorkflows" class="list"></div></article>
+    <article class="card"><h3>Nikky Fabric</h3><div id="systemFabric" class="list"></div></article>
+    <article class="card"><h3>Guardian & sensors</h3><div id="systemGuardian" class="list"></div></article>
   </div>
 </section>
 </main>
@@ -435,6 +437,8 @@ function renderSystem(){
  q("systemHealth").innerHTML=health.length?health.map(h=>`<div class="item"><strong>${esc(h.id)}</strong><div class="muted small">${esc(h.status||"unknown")}${h.failures?" · "+h.failures+" failures":""}</div></div>`).join(""):'<div class="muted">Provider health appears after live provider calls.</div>';
  const states=st?.workflows?.states||{};
  q("systemWorkflows").innerHTML=st?`<div class="item"><strong>${st.workflows?.total||0} workflows</strong><div class="muted small">${esc(Object.entries(states).map(([k,v])=>k+": "+v).join(" · ")||"No active workflow history")}</div></div><div class="item"><strong>${st.approvalsPending||0} pending approvals</strong></div>`:'<div class="muted">Backend workflow status unavailable.</div>';
+ q("systemFabric").innerHTML=st?`<div class="item"><strong>${st.fabric?.endpoints||0} authorized endpoints</strong><div class="muted small">${st.missions?.total||0} missions tracked. Apps/devices are controlled through existing authorized capabilities.</div></div>`:'<div class="muted">Fabric status unavailable.</div>';
+ q("systemGuardian").innerHTML=st?`<div class="item"><strong>${st.guardian?.openIncidents||0} open incidents</strong><div class="muted small">${st.sensors?.sources||0} sensor signals registered. Professional emergency actions require configured legitimate channels and policy.</div></div>`:'<div class="muted">Guardian status unavailable.</div>';
 }
 function buildAudit(){
  const issues=[];

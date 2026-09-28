@@ -28,6 +28,11 @@ function evaluate({env=process.env}={}){
  add("wake-word-core","native",exists("core/wake-word.js"),"Wake-word lifecycle boundary exists");
  add("speaker-verification","native",exists("core/speaker-verification.js"),"Optional speaker verification policy exists");
  add("active-context","native",exists("core/active-context.js"),"Permission-gated active context model exists");
+ add("fabric","orchestration",exists("core/fabric.js")&&exists("core/app-controller.js")&&exists("core/discovery.js"),"Universal Fabric discovery and controller exist");
+ add("missions","orchestration",exists("core/mission-planner.js")&&exists("core/mission-runner.js"),"Resumable mission engine exists");
+ add("transaction-safety","security",exists("core/transaction-safety.js")&&exists("core/fabric-policy.js"),"Financial and Fabric execution safeguards exist");
+ add("guardian","safety",exists("core/guardian.js")&&exists("core/sensor-fusion.js")&&exists("core/emergency-policy.js"),"Guardian sensor fusion and policy engine exist");
+ add("iot-contracts","native",exists("providers/matter.js")&&exists("providers/mqtt.js"),"Matter and MQTT adapter contracts exist");
  add("android-source","native",exists("clients/android/app/src/main/AndroidManifest.xml")&&exists("clients/android/app/src/main/java/com/nikky/assistant/MainActivity.kt"),"Android source shell exists");
  add("ios-source","native",exists("clients/ios/Package.swift")&&exists("clients/ios/Sources/NikkyIOS/NikkyClient.swift"),"iOS Swift source shell exists");
  add("desktop-source","native",exists("clients/desktop/src-tauri/Cargo.toml")&&exists("clients/desktop/src-tauri/src/lib.rs"),"Tauri/Rust source shell exists");
