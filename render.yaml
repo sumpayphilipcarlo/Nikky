@@ -24,9 +24,11 @@ services:
       - key: NIKKY_SESSION_SECRET
         generateValue: true
       - key: NIKKY_DEFAULT_USER_ID
+        value: nikky-owner
+      - key: NIKKY_OWNER_EMAIL
         sync: false
       - key: NIKKY_OIDC_ISSUER
-        sync: false
+        value: https://accounts.google.com
       - key: NIKKY_OIDC_CLIENT_ID
         sync: false
       - key: GOOGLE_ROUTES_API_KEY
