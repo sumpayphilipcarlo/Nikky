@@ -33,6 +33,8 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <button class="nav" data-view="audit">Audit Trail</button>
     <button class="nav" data-view="learning">Learning</button>
     <button class="nav" data-view="journey">Journey</button>
+    <button class="nav" data-view="fabric">Fabric</button>
+    <button class="nav" data-view="guardian">Guardian</button>
     <button class="nav" data-view="system">System</button>
   </nav>
 </aside>
@@ -169,6 +171,22 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     </article>
   </div>
 </section>
+<section id="view-fabric" class="view">
+  <div class="top"><div><div class="eyebrow">NIKKY FABRIC</div><h1>Apps, devices & missions</h1><p class="muted">Nikky orchestrates capabilities exposed by your authorized apps, devices, websites and IoT endpoints. It does not replace those services.</p></div><button class="secondary" id="refreshFabric">Refresh</button></div>
+  <div class="grid">
+    <article class="card"><h3>Authorized endpoints</h3><div id="fabricEndpoints" class="list"></div></article>
+    <article class="card"><h3>Active missions</h3><div id="fabricMissions" class="list"></div></article>
+    <article class="card hero"><div class="eyebrow">AUTHORITY BOUNDARY</div><h3>Capabilities are permissioned</h3><p class="muted">Existing apps and devices can only be used through user-granted capabilities. Consequential actions still pass through Nikky Core approval, idempotency, verification and audit controls.</p></article>
+  </div>
+</section>
+<section id="view-guardian" class="view">
+  <div class="top"><div><div class="eyebrow">NIKKY GUARDIAN</div><h1>Safety signals & incidents</h1><p class="muted">Guardian correlates authorized sensor signals and follows preconfigured escalation rules. Sensor anomalies are not treated as medical diagnoses.</p></div><button class="secondary" id="refreshGuardian">Refresh</button></div>
+  <div class="grid">
+    <article class="card"><h3>Open incidents</h3><div id="guardianIncidents" class="list"></div></article>
+    <article class="card"><h3>Sensor health</h3><div id="guardianSensors" class="list"></div></article>
+    <article class="card hero"><div class="eyebrow">EMERGENCY SAFETY</div><h3>Escalation requires policy and corroboration</h3><p class="muted">Trusted contacts and professional-help channels must be configured in advance. Nikky does not assume direct police, fire, or medical-service APIs exist.</p></article>
+  </div>
+</section>
 <section id="view-system" class="view">
   <div class="top"><div><div class="eyebrow">SYSTEM CONTROL CENTER</div><h1>Connections, health & integrity</h1><p class="muted">Nikky reports capabilities from the authenticated backend instead of presenting configured adapters as automatically live.</p></div><button class="secondary" id="refreshSystem">Refresh status</button></div>
   <div class="grid">
@@ -195,7 +213,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -264,18 +282,24 @@ async function syncCoreState(){
  if(!coreApi)return showCoreStatus(false,"API client unavailable.");
  try{
   await coreApi.session();
-  const [ap,aud,status]=await Promise.all([coreApi.approvals(),coreApi.audit(),coreApi.status()]);
+  const [ap,aud,status,fabric,missions,incidents,sensors]=await Promise.all([
+   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
+  ]);
   state.approvals=Array.isArray(ap.approvals)?ap.approvals:[];
   state.audit=Array.isArray(aud.audit)?aud.audit:[];
   state.systemStatus=status||null;
+  state.fabricEndpoints=Array.isArray(fabric.endpoints)?fabric.endpoints:[];
+  state.missions=Array.isArray(missions.missions)?missions.missions:[];
+  state.guardianIncidents=Array.isArray(incidents.incidents)?incidents.incidents:[];
+  state.guardianSensors=Array.isArray(sensors.sensors)?sensors.sensors:[];
   showCoreStatus(true);
-  persist();renderApprovals();renderAudit();renderSystem();renderSkills();buildAudit();
+  persist();renderApprovals();renderAudit();renderSystem();renderFabric();renderGuardian();renderSkills();buildAudit();
   if(q("auditScope"))q("auditScope").textContent="Audit entries are synchronized with authenticated Nikky Core. Integrity status is visible in System.";
   return true;
  }catch(e){
   state.systemStatus=null;
   showCoreStatus(false,e.status===401?"Sign in through the configured Nikky identity provider to enable backend execution.":e.message);
-  renderSystem();renderSkills();buildAudit();
+  renderSystem();renderFabric();renderGuardian();renderSkills();buildAudit();
   if(q("auditScope"))q("auditScope").textContent="Local fallback audit only. Connect an authenticated Nikky Core session for server-side audit integrity.";
   return false;
  }
@@ -426,6 +450,20 @@ function renderProactive(){
   });
 }
 
+function renderFabric(){
+ if(!q("fabricEndpoints"))return;
+ const endpoints=state.fabricEndpoints||[];
+ q("fabricEndpoints").innerHTML=endpoints.length?endpoints.map(e=>`<div class="item"><strong>${esc(e.name||e.id)}</strong><div class="muted small">${esc(e.kind||"endpoint")} · ${e.online===false?"offline":"online"} · ${e.trusted?"trusted":"approval only"}</div><div class="small">${esc((e.capabilities||[]).join(" · ")||"No capabilities reported")}</div></div>`).join(""):'<div class="muted">No authorized app/device endpoints discovered yet.</div>';
+ const missions=state.missions||[];
+ q("fabricMissions").innerHTML=missions.length?missions.map(m=>`<div class="item"><strong>${esc(m.goal||m.id)}</strong><div class="muted small">${esc(m.state||"unknown")} · ${(m.steps||[]).filter(x=>x.status==="completed").length}/${(m.steps||[]).length} steps</div></div>`).join(""):'<div class="muted">No missions are active.</div>';
+}
+function renderGuardian(){
+ if(!q("guardianIncidents"))return;
+ const incidents=state.guardianIncidents||[];
+ q("guardianIncidents").innerHTML=incidents.length?incidents.map(i=>`<div class="item"><strong>${esc(i.type||"incident")} · ${esc(i.level||"unknown")}</strong><div class="muted small">${esc(i.status||"open")} · ${i.corroboration?.sourceCount||0} corroborating sources</div></div>`).join(""):'<div class="muted">No Guardian incidents.</div>';
+ const sensors=state.guardianSensors||[];
+ q("guardianSensors").innerHTML=sensors.length?sensors.map(x=>`<div class="item"><strong>${esc(x.sourceId||"sensor")}</strong><div class="muted small">${esc(x.signal||"signal")} · ${x.stale?"stale":"current"}</div></div>`).join(""):'<div class="muted">No authorized sensor signals reported.</div>';
+}
 function renderSystem(){
  const st=state.systemStatus;
  if(!q("systemBackend"))return;
@@ -452,6 +490,8 @@ async function weather(){if(!navigator.geolocation){q("weather").textContent="Lo
 q("weatherBtn").onclick=weather;
 q("refreshCore").onclick=syncCoreState;
 q("refreshSystem").onclick=syncCoreState;
+q("refreshFabric").onclick=syncCoreState;
+q("refreshGuardian").onclick=syncCoreState;
 q("planJourney").onclick=buildJourney;
 q("loadUpcoming").onclick=loadUpcomingEvent;
 q("connectCalendar").onclick=connectGoogleCalendar;
