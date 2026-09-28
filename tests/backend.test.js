@@ -183,6 +183,10 @@ const Orchestrator=require("../orchestrator.js");
  res=await fetch(base+"/health");
  assert.equal(res.headers.get("x-content-type-options"),"nosniff");
  assert.equal(res.headers.get("x-frame-options"),"DENY");
+ assert.match(res.headers.get("permissions-policy")||"",/microphone=\(self\)/);
+ assert.match(res.headers.get("permissions-policy")||"",/geolocation=\(self\)/);
+ assert.match(res.headers.get("content-security-policy")||"",/accounts\.google\.com/);
+ assert.match(res.headers.get("content-security-policy")||"",/api\.open-meteo\.com/);
  assert.ok(res.headers.get("x-request-id"));
 
  runtime.policyStore.add({id:"auto-note",actionType:"note.create",effect:"allow"});
