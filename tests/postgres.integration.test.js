@@ -35,7 +35,12 @@ const {createServer}=require("../server/index.js");
   const pendingAfterRestart=await runtime.propose({type:"sms.send",title:"Pending after restart",to:"+15550000001",body:"pending",idempotencyKey:"pg-ci-pending"});
   assert.equal(pendingAfterRestart.result.status,"approval_required");
 
-  runtime.fabric.register({id:"ci-phone",kind:"device",trusted:true,capabilities:["ride.book"],methods:["intent"]});
+  const remembered=runtime.memory.put({id:"mem-runtime",type:"preference",value:{preferredRide:"Grab"},source:"ci",sensitivity:"normal"});
+  await runtime.persistMemoryRecord(remembered);
+  runtime.policyStore.add({id:"ci-auto-note",actionType:"note.create",effect:"allow",deviceId:"ci-phone"});
+  await runtime.persistRuntimeState("authority_policies");
+
+    runtime.fabric.register({id:"ci-phone",kind:"device",trusted:true,capabilities:["ride.book"],methods:["intent"]});
   runtime.capabilityPermissions.grant({subjectId:"ci-phone",capability:"ride.book",mode:"approval"});
   runtime.missionPlanner.create({goal:"Persistent mission",steps:[{capability:"ride.book"}]});
   runtime.transactionSafety.record({type:"bill.pay",recipient:"PowerCo",amount:1234,currency:"PHP"},{status:"completed",providerReference:"ci-ref"});
@@ -46,6 +51,9 @@ const {createServer}=require("../server/index.js");
 
   const restoredState=createRuntime({workflowRepository:repo,userId:"ci-user"});
   await restoredState.restoreRuntimeState();
+  await restoredState.restoreMemories();
+  assert.equal(restoredState.memory.get("mem-runtime").value.preferredRide,"Grab");
+  assert.ok(restoredState.policyStore.list().some(p=>p.id==="ci-auto-note"));
   assert.equal(restoredState.fabric.get("ci-phone").kind,"device");
   assert.equal(restoredState.capabilityPermissions.evaluate("ci-phone","ride.book").mode,"approval");
   assert.ok(restoredState.missionPlanner.list().some(m=>m.goal==="Persistent mission"));
@@ -89,7 +97,7 @@ const {createServer}=require("../server/index.js");
   console.log("Nikky PostgreSQL integration tests passed");
  }finally{
   await pool.query("DELETE FROM jobs WHERE id='job-ci'").catch(()=>{});
-  await pool.query("DELETE FROM memories WHERE id='mem-ci'").catch(()=>{});
+  await pool.query("DELETE FROM memories WHERE id IN ('mem-ci','mem-runtime')").catch(()=>{});
   await pool.query("DELETE FROM runtime_state WHERE user_id='ci-user'").catch(()=>{});
   await pool.query("DELETE FROM workflows WHERE user_id='ci-user'").catch(()=>{});
   await pool.query("DELETE FROM users WHERE id='ci-user'").catch(()=>{});
