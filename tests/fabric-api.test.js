@@ -6,8 +6,12 @@ const {createRuntime}=require("../server/runtime.js");
 const {createServer}=require("../server/index.js");
 
 (async()=>{
+ const fabricExecutions=[];
  const runtime=createRuntime({providers:{
-   requestProfessionalHelp:async()=>({ok:true,live:true,channel:"test-monitoring"})
+   requestProfessionalHelp:async()=>({ok:true,live:true,channel:"test-monitoring"}),
+   fabricExecutors:{
+     intent:async({endpoint,capability,payload})=>{fabricExecutions.push({endpoint:endpoint.id,capability,payload});return {ok:true,live:true,bookingId:"ride-1"}}
+   }
  }});
  const server=createServer({runtime});
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
@@ -26,6 +30,14 @@ const {createServer}=require("../server/index.js");
 
  res=await fetch(base+"/v1/permissions",{method:"POST",headers,body:JSON.stringify({subjectId:"phone",capability:"ride.book",mode:"trusted"})});
  assert.equal(res.status,201);
+
+ res=await fetch(base+"/v1/actions/propose",{method:"POST",headers,body:JSON.stringify({type:"ride.book",payload:{destination:"Airport"},meta:{useFabric:true,endpointId:"phone"},idempotencyKey:"ride-book-1"})});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.result.status,"approval_required");
+ const approvalId=body.result.item.id;
+ res=await fetch(base+"/v1/approvals/"+encodeURIComponent(approvalId)+"/approve",{method:"POST",headers});
+ assert.equal(res.status,200);body=await res.json();assert.equal(body.status,"executed");
+ assert.equal(fabricExecutions.length,1);
+ assert.equal(fabricExecutions[0].endpoint,"phone");
 
  res=await fetch(base+"/v1/missions",{method:"POST",headers,body:JSON.stringify({goal:"Book a ride",steps:[{capability:"ride.book"}]})});
  assert.equal(res.status,201);body=await res.json();assert.equal(body.goal,"Book a ride");
