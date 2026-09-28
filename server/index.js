@@ -162,6 +162,12 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="POST"&&url.pathname==="/v1/fabric/resolve"){
    const body=await readJson(req);return json(res,200,appRuntime.fabric.resolve(body.capability,body.options||{}));
   }
+  if(req.method==="POST"&&url.pathname==="/v1/fabric/discover"){
+   const body=await readJson(req);return json(res,200,await appRuntime.discovery.scan(body||{}));
+  }
+  if(req.method==="POST"&&url.pathname==="/v1/goals/plan"){
+   const body=await readJson(req);return json(res,200,appRuntime.goalPlanner.plan(body));
+  }
   if(req.method==="GET"&&url.pathname==="/v1/permissions")return json(res,200,{permissions:appRuntime.capabilityPermissions.list()});
   if(req.method==="POST"&&url.pathname==="/v1/permissions"){const body=await readJson(req);return json(res,201,appRuntime.capabilityPermissions.grant(body))}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/permissions/")){
@@ -170,6 +176,12 @@ async function handler(req,res,runtimeOverride=runtime){
   }
   if(req.method==="GET"&&url.pathname==="/v1/missions")return json(res,200,{missions:appRuntime.missionPlanner.list()});
   if(req.method==="POST"&&url.pathname==="/v1/missions"){const body=await readJson(req);return json(res,201,appRuntime.missionPlanner.create(body))}
+  if(req.method==="POST"&&url.pathname.startsWith("/v1/missions/")&&url.pathname.endsWith("/run")){
+   const id=url.pathname.split("/")[3];return json(res,200,await appRuntime.missionRunner.run(id));
+  }
+  if(req.method==="POST"&&url.pathname.startsWith("/v1/missions/")&&url.pathname.endsWith("/resume")){
+   const id=url.pathname.split("/")[3];return json(res,200,await appRuntime.missionRunner.resume(id));
+  }
   if(req.method==="GET"&&url.pathname.startsWith("/v1/missions/")){
    const id=decodeURIComponent(url.pathname.slice("/v1/missions/".length));const mission=appRuntime.missionPlanner.get(id);
    return mission?json(res,200,mission):json(res,404,{error:"mission_not_found"});
