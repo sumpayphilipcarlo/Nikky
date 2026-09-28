@@ -149,6 +149,38 @@ async function handler(req,res,runtimeOverride=runtime){
    const connections=vault?.list?await vault.list():[];
    return json(res,200,{providers:connections,health:appRuntime.providerHealth?.snapshot?.()||[]});
   }
+  if(req.method==="GET"&&url.pathname==="/v1/fabric")return json(res,200,{endpoints:appRuntime.fabric.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/fabric/endpoints"){const body=await readJson(req);return json(res,201,appRuntime.fabric.register(body))}
+  if(req.method==="DELETE"&&url.pathname.startsWith("/v1/fabric/endpoints/")){
+   const id=decodeURIComponent(url.pathname.slice("/v1/fabric/endpoints/".length));
+   return json(res,200,{deleted:appRuntime.fabric.remove(id)});
+  }
+  if(req.method==="POST"&&url.pathname==="/v1/fabric/resolve"){
+   const body=await readJson(req);return json(res,200,appRuntime.fabric.resolve(body.capability,body.options||{}));
+  }
+  if(req.method==="GET"&&url.pathname==="/v1/permissions")return json(res,200,{permissions:appRuntime.capabilityPermissions.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/permissions"){const body=await readJson(req);return json(res,201,appRuntime.capabilityPermissions.grant(body))}
+  if(req.method==="DELETE"&&url.pathname.startsWith("/v1/permissions/")){
+   const parts=url.pathname.split("/").filter(Boolean);
+   return json(res,200,{deleted:appRuntime.capabilityPermissions.revoke(decodeURIComponent(parts[2]||""),decodeURIComponent(parts[3]||""))});
+  }
+  if(req.method==="GET"&&url.pathname==="/v1/missions")return json(res,200,{missions:appRuntime.missionPlanner.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/missions"){const body=await readJson(req);return json(res,201,appRuntime.missionPlanner.create(body))}
+  if(req.method==="GET"&&url.pathname.startsWith("/v1/missions/")){
+   const id=decodeURIComponent(url.pathname.slice("/v1/missions/".length));const mission=appRuntime.missionPlanner.get(id);
+   return mission?json(res,200,mission):json(res,404,{error:"mission_not_found"});
+  }
+  if(req.method==="POST"&&url.pathname==="/v1/transactions/evaluate"){const body=await readJson(req);return json(res,200,appRuntime.transactionSafety.evaluate(body.transaction||{},body.policy||{}))}
+  if(req.method==="POST"&&url.pathname==="/v1/transactions/record"){const body=await readJson(req);return json(res,201,appRuntime.transactionSafety.record(body.transaction||{},body.result||{}))}
+  if(req.method==="POST"&&url.pathname==="/v1/sensors"){const body=await readJson(req);return json(res,201,appRuntime.sensorFusion.ingest(body))}
+  if(req.method==="GET"&&url.pathname==="/v1/sensors/health")return json(res,200,{sensors:appRuntime.sensorFusion.health()});
+  if(req.method==="GET"&&url.pathname==="/v1/guardian/incidents")return json(res,200,{incidents:appRuntime.guardian.list()});
+  if(req.method==="POST"&&url.pathname==="/v1/guardian/incidents"){const body=await readJson(req);return json(res,201,appRuntime.guardian.start(body))}
+  if(req.method==="POST"&&url.pathname.startsWith("/v1/guardian/incidents/")&&url.pathname.endsWith("/escalate")){
+   const id=url.pathname.split("/")[4];const body=await readJson(req);return json(res,200,await appRuntime.guardian.escalate(id,body));
+  }
+  if(req.method==="POST"&&url.pathname==="/v1/guardian/policies"){const body=await readJson(req);return json(res,201,appRuntime.emergencyPolicies.upsert(body))}
+  if(req.method==="GET"&&url.pathname==="/v1/guardian/policies")return json(res,200,{policies:appRuntime.emergencyPolicies.list()});
   if(req.method==="GET"&&url.pathname==="/v1/memory")return json(res,200,{records:appRuntime.memory.list()});
   if(req.method==="POST"&&url.pathname==="/v1/memory"){const body=await readJson(req);return json(res,201,appRuntime.memory.put(body))}
   if(req.method==="DELETE"&&url.pathname.startsWith("/v1/memory/")){
