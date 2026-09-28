@@ -209,12 +209,44 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   requestProfessionalHelp:providers.requestProfessionalHelp||null
  });
 
+ const runtimeStateBuckets={
+  fabric:()=>fabric.snapshot(),
+  capability_permissions:()=>capabilityPermissions.snapshot(),
+  missions:()=>missionPlanner.snapshot(),
+  transactions:()=>transactionSafety.snapshot(),
+  sensors:()=>sensorFusion.snapshot(),
+  emergency_policies:()=>emergencyPolicies.snapshot(),
+  guardian_incidents:()=>guardian.snapshot()
+ };
+ async function persistRuntimeState(bucket){
+  if(!workflowRepository?.saveRuntimeState)return false;
+  if(bucket){
+   const getter=runtimeStateBuckets[bucket];if(!getter)throw new Error("unknown runtime state bucket");
+   await workflowRepository.saveRuntimeState(userId,bucket,getter());return true;
+  }
+  await Promise.all(Object.entries(runtimeStateBuckets).map(([name,getter])=>workflowRepository.saveRuntimeState(userId,name,getter())));
+  return true;
+ }
+ async function restoreRuntimeState(){
+  if(!workflowRepository?.loadRuntimeStates)return {};
+  const names=Object.keys(runtimeStateBuckets);
+  const states=await workflowRepository.loadRuntimeStates(userId,names);
+  if(states.fabric)fabric.restore(states.fabric);
+  if(states.capability_permissions)capabilityPermissions.restore(states.capability_permissions);
+  if(states.missions)missionPlanner.restore(states.missions);
+  if(states.transactions)transactionSafety.restore(states.transactions);
+  if(states.sensors)sensorFusion.restore(states.sensors);
+  if(states.emergency_policies)emergencyPolicies.restore(states.emergency_policies);
+  if(states.guardian_incidents)guardian.restore(states.guardian_incidents);
+  return states;
+ }
+
  async function restoreWorkflows({state,limit=200}={}){
   if(!workflowRepository?.listWorkflows)return [];
   const rows=await workflowRepository.listWorkflows(userId,{state,limit});
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
 }
 module.exports={createRuntime,createActionExecutor};
