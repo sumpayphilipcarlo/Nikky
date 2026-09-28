@@ -2,20 +2,24 @@
 
 Status meanings:
 - **Built/tested**: implementation exists and CI covers core behavior.
-- **Live-capable / config required**: implementation exists but requires external OAuth/API/cloud credentials and real-provider verification.
-- **Scaffold**: architecture/capability contract exists, but a platform-specific binary or external service still must be completed.
+- **Live-capable / config required**: provider/runtime implementation exists but requires real credentials and verification against the external service.
+- **Native source shell**: native source architecture exists, but signed distributable binaries and platform-specific production integrations are not complete.
 - **External environment required**: cannot truthfully be completed inside source code alone.
 
 ## Built/tested core
-PWA prototype; voice/typed interface; routines; life events; local notes; Authority Engine; Approval Center; audit; orchestrator; workflow state machine; risk classification; idempotency/recovery; context learning; proactive detection; Journey/Departure orchestration; notification policy; relationships; commitments/follow-ups; task manager; context graph; prediction confidence; feedback learning; adaptive interruption; travel/life-event planning; Skill SDK/sandbox; provider health; action preview/expiry; scoped policies; tamper-evident audit; privacy controls; encrypted-memory primitive; identity/session/device trust; background worker model; product/safety metrics; file/text/EML/config intelligence; cross-app document-to-email proposal; morning/evening briefs; onboarding; explanation/corrections; data export/delete coordinator; relational schema/repository adapters; CI and branch/PR workflow.
+PWA client; secure Nikky Core API client; session/CSRF/OIDC support; System Control Center; Authority Engine; scoped policies; Approval Center; approval expiry/integrity; tamper-evident audit; workflow state machine; risk classification; idempotency/recovery; encrypted provider credential vault; OAuth refresh lifecycle; context learning; prediction confidence; feedback/adaptive proactivity; Journey/Departure orchestration; notification/escalation policy; relationships; commitments/follow-ups; task manager; context graph; life-event/travel planning; document/file/EML/config intelligence; cross-app document-to-email proposals; morning/evening briefs; onboarding; explanation/corrections; privacy/data export-delete controls; identity/session/device trust; Skill SDK/sandbox; provider health/circuit breaker; production PostgreSQL schema/repository/migrations; production worker wiring; hardened HTTP boundary; Docker deployment; end-to-end scenarios; UI static checks; security checks; native static checks; release-readiness gate; CI and branch/PR workflow.
 
 ## Live-capable / configuration required
-Google Calendar read; Google Routes traffic; Open-Meteo weather (no credential required, still needs deployed client/backend); Gmail read/send; Google Drive; Spotify; Twilio SMS/calls; Slack; Microsoft 365; Notion; Home Assistant; WhatsApp Cloud API; FCM push; PostgreSQL production storage.
+Google Calendar; Google Routes traffic; Open-Meteo weather; Gmail read/send; Google Drive; Spotify; Twilio SMS/calls; Slack; Microsoft 365; Notion; Home Assistant; WhatsApp Cloud API; FCM push; PostgreSQL production storage. These are not considered live until real credentials/accounts are configured and successful requests are verified.
 
-## Scaffold / platform work required
-Android native shell/background/wake-word integration; iOS native shell/App Intents/push/background constraints; Tauri Windows/macOS/Linux clients; native speaker verification; continuous wake word; active-window/screen context; signed/notarized installers; App Store/Play Store packages.
+## Native source shells
+- Android Kotlin project shell with restricted manifest and foreground-service boundary.
+- iOS Swift Package client/action boundary and capability model.
+- Desktop Tauri/Rust source shell with restrictive CSP and local privileged-execution prohibition.
+
+These are not signed/shippable binaries. Remaining native production work includes platform UI integration, runtime permission UX, secure OS credential storage, push registration, wake-word/speech integration where permitted, device testing, signing/notarization, and store packaging.
 
 ## External environment required
-Production OAuth app registrations/consent screens; cloud database and backups; production secret manager; TLS/domain; push certificates/service accounts; provider billing/accounts; mobile/desktop code signing; app-store approvals; production monitoring/SIEM; penetration test; legal/privacy review; real-user pilot and traction metrics.
+Production OAuth registrations/consent screens; cloud database/backups; production secret manager/KMS; public domain/TLS; push certificates/service accounts; provider billing/accounts; Android/iOS/desktop signing identities; production monitoring/SIEM; penetration test; legal/privacy review; app-store approvals; real-user pilot and traction metrics.
 
-The repository must not describe any item in the latter three groups as live until it has been configured and verified against the real external system.
+Run `npm run readiness` for a machine-readable distinction between source-level code readiness and unresolved external production prerequisites.

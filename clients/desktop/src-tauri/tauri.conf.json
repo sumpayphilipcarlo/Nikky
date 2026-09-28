@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nikky",
+  "version": "0.1.0",
+  "identifier": "com.nikky.assistant",
+  "build": {
+    "frontendDist": "../../"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' https:; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    }
+  }
+}
