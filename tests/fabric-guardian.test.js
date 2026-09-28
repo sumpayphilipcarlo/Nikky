@@ -1,4 +1,5 @@
 const assert=require("assert");
+const Risk=require("../core/risk.js");
 const {createFabric}=require("../core/fabric.js");
 const {createAppController}=require("../core/app-controller.js");
 const {createMissionPlanner}=require("../core/mission-planner.js");
@@ -49,6 +50,9 @@ const {createEmergencyPolicyStore}=require("../core/emergency-policy.js");
  assert.equal(missions.next("m1").capability,"navigation.start");
  missions.completeStep("m1","step_2",{ok:true});
  assert.equal(missions.get("m1").state,"completed");
+
+ assert.equal(Risk.classify({type:"bill.pay"}).level,"critical");
+ assert.equal(Risk.classify({type:"purchase.submit"}).requiresApproval,true);
 
  const safety=createTransactionSafety({now:()=>now});
  let eval1=safety.evaluate({type:"bill.pay",recipient:"PowerCo",amount:2500,currency:"PHP"},{mode:"trusted",maxAmount:3000,allowedRecipients:["PowerCo"]});
