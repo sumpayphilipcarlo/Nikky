@@ -225,6 +225,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   audit_log:()=>JSON.parse(JSON.stringify(audit)),
   audit_ledger:()=>auditLedger.exportAll(),
   idempotency:()=>idempotency.snapshot(),
+  authority_policies:()=>policyStore.snapshot(),
   fabric:()=>fabric.snapshot(),
   capability_permissions:()=>capabilityPermissions.snapshot(),
   missions:()=>missionPlanner.snapshot(),
@@ -250,6 +251,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   if(states.audit_log){audit.length=0;audit.push(...JSON.parse(JSON.stringify(states.audit_log)))}
   if(states.audit_ledger)auditLedger.restore(states.audit_ledger);
   if(states.idempotency)idempotency.restore(states.idempotency);
+  if(states.authority_policies)policyStore.restore(states.authority_policies);
   if(states.fabric)fabric.restore(states.fabric);
   if(states.capability_permissions)capabilityPermissions.restore(states.capability_permissions);
   if(states.missions)missionPlanner.restore(states.missions);
