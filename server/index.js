@@ -1,4 +1,6 @@
 const http=require("http");
+const fs=require("fs");
+const path=require("path");
 const {URL}=require("url");
 const {loadConfig}=require("./config.js");
 const {createRuntime}=require("./runtime.js");
@@ -20,6 +22,28 @@ const oidc=(config.oidcIssuer&&config.oidcClientId)?createOidcVerifier({
  clientId:config.oidcClientId
 }):null;
 
+const STATIC_ASSETS=new Map([
+ ["/",{file:"index.html",type:"text/html; charset=utf-8"}],
+ ["/index.html",{file:"index.html",type:"text/html; charset=utf-8"}],
+ ["/api-client.js",{file:"api-client.js",type:"application/javascript; charset=utf-8"}],
+ ["/authority.js",{file:"authority.js",type:"application/javascript; charset=utf-8"}],
+ ["/orchestrator.js",{file:"orchestrator.js",type:"application/javascript; charset=utf-8"}],
+ ["/context.js",{file:"context.js",type:"application/javascript; charset=utf-8"}],
+ ["/proactive.js",{file:"proactive.js",type:"application/javascript; charset=utf-8"}],
+ ["/journey.js",{file:"journey.js",type:"application/javascript; charset=utf-8"}],
+ ["/providers.js",{file:"providers.js",type:"application/javascript; charset=utf-8"}],
+ ["/google-calendar.js",{file:"google-calendar.js",type:"application/javascript; charset=utf-8"}],
+ ["/manifest.json",{file:"manifest.json",type:"application/manifest+json; charset=utf-8"}],
+ ["/sw.js",{file:"sw.js",type:"application/javascript; charset=utf-8"}]
+]);
+function serveStatic(urlPath,res){
+ const asset=STATIC_ASSETS.get(urlPath);if(!asset)return false;
+ const root=path.resolve(__dirname,".."),filePath=path.resolve(root,asset.file);
+ if(!filePath.startsWith(root+path.sep)&&filePath!==path.join(root,asset.file))return false;
+ let data;try{data=fs.readFileSync(filePath)}catch{return false}
+ res.writeHead(200,{"content-type":asset.type,"content-length":data.length,"cache-control":urlPath==="/"||urlPath==="/index.html"?"no-cache":"public, max-age=300"});
+ res.end(data);return true;
+}
 function json(res,status,body){
  const data=JSON.stringify(body);
  res.writeHead(status,{"content-type":"application/json","content-length":Buffer.byteLength(data)});
@@ -77,6 +101,8 @@ async function handler(req,res,runtimeOverride=runtime){
  if(req.method==="OPTIONS"){res.writeHead(204);return res.end()}
  const url=new URL(req.url,"http://localhost");
  try{
+  if(req.method==="GET"&&serveStatic(url.pathname,res))return;
+
   if(req.method==="GET"&&url.pathname==="/health"){
    return json(res,200,{ok:true,service:"nikky-core",environment:config.environment,warnings});
   }
