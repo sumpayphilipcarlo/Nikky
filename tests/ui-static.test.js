@@ -6,6 +6,8 @@ assert.ok(html.includes('script src="api-client.js"'),"PWA must load Nikky API c
 assert.ok(html.includes('id="coreStatus"'),"PWA must surface backend connection state");
 assert.ok(html.includes('data-view="system"'),"PWA must expose the System control center");
 assert.ok(html.includes('id="systemProviders"'),"System view must expose provider state");
+assert.ok(html.includes('id="systemFabric"'),"System view must expose Fabric state");
+assert.ok(html.includes('id="systemGuardian"'),"System view must expose Guardian state");
 assert.ok(!html.includes("Prototype live"),"UI must not claim adapters are live merely because code exists");
 assert.ok(!html.includes("Live Calendar, Maps, and SMS providers are not connected yet."),"Journey copy must not use stale hardcoded provider status");
 assert.ok(html.includes('aria-label="Talk to Nikky"'),"top microphone needs an accessible name");
