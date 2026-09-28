@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "NikkyIOS",
-    platforms: [.iOS(.v17)],
+    platforms: [.macOS(.v12), .iOS(.v17)],
     products: [.library(name: "NikkyIOS", targets: ["NikkyIOS"])],
     targets: [
         .target(name: "NikkyIOS"),
