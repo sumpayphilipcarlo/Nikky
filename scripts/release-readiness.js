@@ -18,7 +18,8 @@ function evaluate({env=process.env}={}){
  add("backend","architecture",exists("server/production.js"),"Production backend entrypoint exists");
  add("worker","architecture",exists("server/worker-entry.js"),"Background worker entrypoint exists");
  add("same-origin-pwa","architecture",read("server/index.js").includes("STATIC_ASSETS"),"Production core serves the functional PWA on the same origin");
- add("runtime-state","persistence",read("storage/schema.sql").includes("runtime_state")&&read("server/runtime.js").includes("restoreRuntimeState"),"Fabric, missions, approvals, audit, idempotency and Guardian state restore from PostgreSQL");
+ add("runtime-state","persistence",read("storage/schema.sql").includes("runtime_state")&&read("server/runtime.js").includes("restoreRuntimeState"),"Fabric, missions, approvals, audit, idempotency, authority policy and Guardian state restore from PostgreSQL");
+ add("encrypted-memory-runtime","persistence",read("server/runtime.js").includes("persistMemoryRecord")&&read("server/runtime.js").includes("restoreMemories"),"User memory is encrypted and restored from PostgreSQL");
  add("deployment-blueprint","deployment",exists("render.yaml"),"Production web, worker and PostgreSQL Blueprint exists");
  add("postgres","persistence",exists("storage/postgres.js")&&exists("storage/schema.sql"),"PostgreSQL repository and schema exist");
  add("auth","security",exists("server/auth.js")&&exists("server/oidc.js"),"Session and OIDC auth modules exist");
