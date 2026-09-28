@@ -67,10 +67,28 @@ function createPostgresRepository(pool){
   return r.rows[0]||null;
  }
 
+ async function saveRuntimeState(userId,bucket,value){
+  if(!bucket)throw new Error("runtime state bucket required");
+  const r=await pool.query(
+   `INSERT INTO runtime_state(user_id,bucket,value,updated_at) VALUES($1,$2,$3,NOW())
+    ON CONFLICT(user_id,bucket) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()
+    RETURNING bucket,value,updated_at`,
+   [userId,bucket,JSON.stringify(value??null)]);
+  return r.rows[0];
+ }
+ async function loadRuntimeState(userId,bucket){
+  const r=await pool.query("SELECT value FROM runtime_state WHERE user_id=$1 AND bucket=$2",[userId,bucket]);
+  return r.rows[0]?.value??null;
+ }
+ async function loadRuntimeStates(userId,buckets=[]){
+  if(!Array.isArray(buckets)||!buckets.length)return {};
+  const r=await pool.query("SELECT bucket,value FROM runtime_state WHERE user_id=$1 AND bucket = ANY($2::text[])",[userId,buckets]);
+  return Object.fromEntries(r.rows.map(row=>[row.bucket,row.value]));
+ }
  async function appendFeedback(userId,{predictionKey,outcome,context}){
   const r=await pool.query("INSERT INTO feedback(user_id,prediction_key,outcome,context) VALUES($1,$2,$3,$4) RETURNING *",[userId,predictionKey,outcome,JSON.stringify(context||{})]);
   return r.rows[0];
  }
- return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,appendFeedback,pool};
+ return {upsertUser,saveWorkflow,listWorkflows,saveMemory,listDueJobs,updateJobResult,saveProviderConnection,getProviderConnection,listProviderConnections,deleteProviderConnection,updateProviderHealth,saveRuntimeState,loadRuntimeState,loadRuntimeStates,appendFeedback,pool};
 }
 module.exports={createPostgresRepository};
