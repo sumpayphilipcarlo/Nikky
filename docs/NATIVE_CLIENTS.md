@@ -13,3 +13,6 @@ A Tauri/Rust source shell now exists under `clients/desktop/src-tauri`, with a r
 
 ## Release gate
 `npm run readiness` checks source-level production prerequisites and separately reports external configuration blockers. Code readiness can pass while production readiness remains false when OAuth registrations, database, domain/TLS, push credentials, signing, monitoring, or other external dependencies are missing.
+
+## Universal app control source adapters
+Android now includes launcher-visible app discovery plus package/deep-link control boundaries. iOS includes an injected application-opening bridge suitable for approved URL schemes/App Intents integration. Desktop includes an app-launch contract that requires absolute executable paths. These remain platform source adapters, not permission bypasses; runtime permissions, OS policy, user consent, signing, and real-device verification are still required.
