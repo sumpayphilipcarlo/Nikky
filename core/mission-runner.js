@@ -12,7 +12,7 @@ function createMissionRunner({planner,controller,proposeAction}={}){
    try{
     let result;
     if(proposeAction){
-     result=await proposeAction({type:step.capability,payload:step.payload||{},meta:{useFabric:true,endpointId:step.endpointId},idempotencyKey:step.idempotencyKey||missionId+"-"+step.id});
+     result=await proposeAction({type:step.capability,payload:step.payload||{},meta:{useFabric:true,endpointId:step.endpointId,missionId,missionStepId:step.id},idempotencyKey:step.idempotencyKey||missionId+"-"+step.id});
      if(result?.result?.status==="approval_required"){planner.transition(missionId,"waiting_user",{waitingFor:step.id,approvalId:result.result.item?.id});break}
      if(result?.result?.status==="execution_failed"||result?.result?.status==="denied")throw new Error(result?.result?.status||"action failed");
     }else if(controller){
