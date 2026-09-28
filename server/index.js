@@ -194,7 +194,12 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="POST"&&url.pathname==="/v1/sensors"){const body=await readJson(req);const value=appRuntime.sensorFusion.ingest(body);await appRuntime.persistRuntimeState?.("sensors");return json(res,201,value)}
   if(req.method==="GET"&&url.pathname==="/v1/sensors/health")return json(res,200,{sensors:appRuntime.sensorFusion.health()});
   if(req.method==="GET"&&url.pathname==="/v1/guardian/incidents")return json(res,200,{incidents:appRuntime.guardian.list()});
-  if(req.method==="POST"&&url.pathname==="/v1/guardian/incidents"){const body=await readJson(req);const value=appRuntime.guardian.start(body);await appRuntime.persistRuntimeState?.("guardian_incidents");return json(res,201,value)}
+  if(req.method==="POST"&&url.pathname==="/v1/guardian/incidents"){
+   const body=await readJson(req);
+   const configured=body.policyId?appRuntime.emergencyPolicies.get?.(body.policyId):appRuntime.emergencyPolicies.evaluate(body.type,{location:body.location}).policy;
+   const value=appRuntime.guardian.start({type:body.type,signals:body.signals||[],location:body.location||null,policy:configured||{}});
+   await appRuntime.persistRuntimeState?.("guardian_incidents");return json(res,201,value);
+  }
   if(req.method==="POST"&&url.pathname.startsWith("/v1/guardian/incidents/")&&url.pathname.endsWith("/escalate")){
    const id=url.pathname.split("/")[4];const body=await readJson(req);const value=await appRuntime.guardian.escalate(id,body);await appRuntime.persistRuntimeState?.("guardian_incidents");return json(res,200,value);
   }
