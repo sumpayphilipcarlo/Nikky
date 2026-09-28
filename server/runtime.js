@@ -20,6 +20,13 @@ const {createMicrosoft365Adapter}=require("../providers/microsoft365.js");
 const {createWhatsAppAdapter}=require("../providers/whatsapp.js");
 const {createHomeAssistantAdapter}=require("../providers/home-assistant.js");
 const {createSpotifyAdapter}=require("../providers/spotify.js");
+const {createFabric}=require("../core/fabric.js");
+const {createMissionPlanner}=require("../core/mission-planner.js");
+const {createCapabilityPermissions}=require("../core/app-permissions.js");
+const {createTransactionSafety}=require("../core/transaction-safety.js");
+const {createSensorFusion}=require("../core/sensor-fusion.js");
+const {createGuardian}=require("../core/guardian.js");
+const {createEmergencyPolicyStore}=require("../core/emergency-policy.js");
 
 function payload(action){return action?.payload&&typeof action.payload==="object"?action.payload:{}}
 function field(action,name,...aliases){
@@ -78,6 +85,12 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const providerHealth=createProviderHealth({now});
  const policyStore=createPolicyEngine();
  const idempotency=createIdempotencyStore({now});
+ const fabric=createFabric({now:()=>new Date(now())});
+ const capabilityPermissions=createCapabilityPermissions();
+ const missionPlanner=createMissionPlanner({fabric,now:()=>new Date(now())});
+ const transactionSafety=createTransactionSafety({now});
+ const sensorFusion=createSensorFusion({now});
+ const emergencyPolicies=createEmergencyPolicyStore();
  const approvals=[],audit=[];
  const credentialVault=providers.credentialVault||null;
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -153,12 +166,19 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   recordAction(metrics,{decision:"rejected",status:result.status});
   return result;
  }
+ const guardian=createGuardian({
+  sensorFusion,now,
+  notify:async incident=>propose({type:"proactive.notify",title:"Guardian alert",summary:"Potential "+incident.type+" incident detected",payload:{incidentId:incident.id,severity:incident.level},idempotencyKey:"guardian-notify-"+incident.id}),
+  contactTrusted:async incident=>propose({type:"sms.send",payload:{recipient:incident.policy?.trustedContacts?.[0],body:"Nikky Guardian detected a potential "+incident.type+" emergency. Incident "+incident.id},idempotencyKey:"guardian-contact-"+incident.id}),
+  requestProfessionalHelp:providers.requestProfessionalHelp||null
+ });
+
  async function restoreWorkflows({state,limit=200}={}){
   if(!workflowRepository?.listWorkflows)return [];
   const rows=await workflowRepository.listWorkflows(userId,{state,limit});
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,missionPlanner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
