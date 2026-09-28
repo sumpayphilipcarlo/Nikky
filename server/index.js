@@ -115,6 +115,10 @@ async function handler(req,res,runtimeOverride=runtime){
    return json(res,ready?.ok?200:503,{ok:!!ready?.ok,status:ready?.ok?"ready":"not-ready",checks:ready?.checks||ready});
   }
 
+  if(req.method==="GET"&&url.pathname==="/auth/config"){
+   return json(res,200,{configured:!!(config.oidcIssuer&&config.oidcClientId),issuer:config.oidcIssuer||null,clientId:config.oidcClientId||null});
+  }
+
   if(url.pathname==="/auth/session"){
    if(!rateLimit(req,res))return;
    if(req.method==="GET"){
@@ -150,8 +154,10 @@ async function handler(req,res,runtimeOverride=runtime){
 
   const principal=url.pathname.startsWith("/v1/")?authorizeApi(req,res):null;
   if(url.pathname.startsWith("/v1/")&&!principal)return;
-  if(config.environment==="production"&&principal?.mode==="session"&&appRuntime.userId&&principal.identity?.sub!==appRuntime.userId){
-   return json(res,403,{error:"user_scope_mismatch"});
+  if(config.environment==="production"&&principal?.mode==="session"){
+   const subMatches=!!appRuntime.userId&&principal.identity?.sub===appRuntime.userId;
+   const emailMatches=!!config.ownerEmail&&String(principal.identity?.email||"").toLowerCase()===config.ownerEmail;
+   if(!subMatches&&!emailMatches)return json(res,403,{error:"user_scope_mismatch"});
   }
 
   if(req.method==="GET"&&url.pathname==="/v1/status"){
