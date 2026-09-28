@@ -43,6 +43,7 @@ function evaluate({env=process.env}={}){
  add("desktop-source","native",exists("clients/desktop/src-tauri/Cargo.toml")&&exists("clients/desktop/src-tauri/src/lib.rs"),"Tauri/Rust source shell exists");
  const ci=read(".github/workflows/core-ci.yml");
  add("native-compile-ci","native",ci.includes("native-android:")&&ci.includes("native-ios:")&&ci.includes("native-desktop:"),"Android, iOS and desktop source compile in CI");
+ add("docker-build-ci","deployment",ci.includes("docker-build:"),"Production Docker image builds in CI");
  add("docker","deployment",exists("deploy/Dockerfile")&&exists("deploy/docker-compose.yml"),"Container deployment files exist");
  for(const name of requiredEnv)add("env-example-"+name,"configuration",defined.includes(name),name+" documented in .env.example");
  for(const name of providerEnv)add("provider-env-"+name,"configuration",defined.includes(name),name+" documented for provider activation",false);
