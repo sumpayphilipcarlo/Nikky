@@ -26,6 +26,25 @@ const {createServer}=require("../server/index.js");
   await restored.restoreWorkflows();
   assert.ok(restored.workflows.has(proposal.workflow.id));
 
+  runtime.fabric.register({id:"ci-phone",kind:"device",trusted:true,capabilities:["ride.book"],methods:["intent"]});
+  runtime.capabilityPermissions.grant({subjectId:"ci-phone",capability:"ride.book",mode:"approval"});
+  runtime.missionPlanner.create({goal:"Persistent mission",steps:[{capability:"ride.book"}]});
+  runtime.transactionSafety.record({type:"bill.pay",recipient:"PowerCo",amount:1234,currency:"PHP"},{status:"completed",providerReference:"ci-ref"});
+  runtime.sensorFusion.ingest({sourceId:"ci-smoke",signal:"smoke",confidence:.9,at:Date.now()});
+  runtime.emergencyPolicies.upsert({id:"ci-fire",type:"fire",trustedContacts:[]});
+  runtime.guardian.start({type:"fire",signals:["smoke"],policy:{minSources:2}});
+  await runtime.persistRuntimeState();
+
+  const restoredState=createRuntime({workflowRepository:repo,userId:"ci-user"});
+  await restoredState.restoreRuntimeState();
+  assert.equal(restoredState.fabric.get("ci-phone").kind,"device");
+  assert.equal(restoredState.capabilityPermissions.evaluate("ci-phone","ride.book").mode,"approval");
+  assert.ok(restoredState.missionPlanner.list().some(m=>m.goal==="Persistent mission"));
+  assert.equal(restoredState.transactionSafety.history().length,1);
+  assert.equal(restoredState.sensorFusion.snapshot().length,1);
+  assert.ok(restoredState.emergencyPolicies.list().some(p=>p.id==="ci-fire"));
+  assert.equal(restoredState.guardian.list().length,1);
+
   await repo.saveMemory("ci-user",{id:"mem-ci",type:"preference",encryptedValue:{ciphertext:"test"},source:"ci",sensitivity:"normal"});
   const mem=await pool.query("SELECT id,type FROM memories WHERE id=$1",["mem-ci"]);
   assert.equal(mem.rows[0].type,"preference");
@@ -58,6 +77,7 @@ const {createServer}=require("../server/index.js");
  }finally{
   await pool.query("DELETE FROM jobs WHERE id='job-ci'").catch(()=>{});
   await pool.query("DELETE FROM memories WHERE id='mem-ci'").catch(()=>{});
+  await pool.query("DELETE FROM runtime_state WHERE user_id='ci-user'").catch(()=>{});
   await pool.query("DELETE FROM workflows WHERE user_id='ci-user'").catch(()=>{});
   await pool.query("DELETE FROM users WHERE id='ci-user'").catch(()=>{});
   await pool.end();
