@@ -11,7 +11,7 @@ const {installGracefulShutdown}=require("./lifecycle.js");
 async function start(){
  const {config,warnings}=assertValidConfig(process.env);
  if(!config.databaseUrl)throw new Error("DATABASE_URL is required for production runtime");
- const pool=createPostgresPool({connectionString:config.databaseUrl,ssl:String(process.env.DATABASE_SSL||"false")==="true"});
+ const pool=createPostgresPool({connectionString:config.databaseUrl,ssl:String(process.env.DATABASE_SSL||"false")==="true",sslCa:process.env.DATABASE_SSL_CA||null});
  await migrate({pool});
  const db=await checkDatabase(pool);
  const repository=createPostgresRepository(pool);
