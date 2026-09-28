@@ -148,15 +148,22 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
     now:new Date(now()).toISOString(),
     riskScore:risk?.score||0
   });
-  const hasScopedRule=!!scoped.ruleId;
-  const authorityLevel=scoped.effect===EFFECTS.ALLOW?Authority.LEVELS.AUTO:
-    scoped.effect===EFFECTS.DENY?Authority.LEVELS.DENY:
-    scoped.effect===EFFECTS.APPROVAL?Authority.LEVELS.APPROVAL:null;
-  const result=await orchestrator.propose(action,hasScopedRule&&authorityLevel?{
-    authorityLevel,
-    reason:"Scoped authority policy "+scoped.ruleId
-  }:{});
-  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.ruleId||null}});
+  const fabricDecision=action?.meta?.useFabric===true&&action?.meta?.endpointId
+    ? fabricPolicy.evaluate({endpointId:action.meta.endpointId,capability:action.type,payload:payload(action)})
+    : null;
+  let authorityLevel=null,authorityReason=null;
+  if(fabricDecision){
+    if(fabricDecision.allowed===false){authorityLevel=Authority.LEVELS.DENY;authorityReason=fabricDecision.reason||"Fabric capability policy denied action";}
+    else if(fabricDecision.mode==="approval"){authorityLevel=Authority.LEVELS.APPROVAL;authorityReason="Fabric capability requires approval";}
+  }
+  if(!authorityLevel&&scoped.ruleId){
+    authorityLevel=scoped.effect===EFFECTS.ALLOW?Authority.LEVELS.AUTO:
+      scoped.effect===EFFECTS.DENY?Authority.LEVELS.DENY:
+      scoped.effect===EFFECTS.APPROVAL?Authority.LEVELS.APPROVAL:null;
+    if(authorityLevel)authorityReason="Scoped authority policy "+scoped.ruleId;
+  }
+  const result=await orchestrator.propose(action,authorityLevel?{authorityLevel,reason:authorityReason}:{});
+  auditLedger.append({actor:"nikky-core",actionType:action.type,decision:result.verdict?.level||result.status,payloadHash:null,metadata:{workflowId:wf.id,policyId:scoped.ruleId||null,fabricMode:fabricDecision?.mode||null}});
   if(result.status==="approval_required") Workflow.transition(wf,Workflow.STATES.AWAITING_APPROVAL,"user approval required");
   else if(result.status==="denied") Workflow.transition(wf,Workflow.STATES.CANCELLED,"authority denied action");
   else if(result.status==="executed") {Workflow.transition(wf,Workflow.STATES.EXECUTING,"authority allowed");Workflow.transition(wf,Workflow.STATES.COMPLETED,"executor completed");}
@@ -189,6 +196,7 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    }
   }
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
+  await persistRuntimeState?.("missions");
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
  }
