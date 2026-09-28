@@ -12,6 +12,8 @@ assert.ok(html.includes('data-view="fabric"'),"PWA must expose Fabric control su
 assert.ok(html.includes('data-view="guardian"'),"PWA must expose Guardian control surface");
 assert.ok(html.includes('id="fabricEndpoints"'),"Fabric view must expose endpoints");
 assert.ok(html.includes('id="fabricMissions"'),"Fabric view must expose missions");
+assert.ok(html.includes('id="fabricPermissions"'),"Fabric view must expose capability permissions");
+assert.ok(html.includes("approvalPreview"),"Approval Center must render consequential-action previews");
 assert.ok(html.includes('id="guardianIncidents"'),"Guardian view must expose incidents");
 assert.ok(html.includes('id="guardianSensors"'),"Guardian view must expose sensor health");
 assert.ok(!html.includes("Prototype live"),"UI must not claim adapters are live merely because code exists");
