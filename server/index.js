@@ -124,6 +124,9 @@ async function handler(req,res,runtimeOverride=runtime){
 
   const principal=url.pathname.startsWith("/v1/")?authorizeApi(req,res):null;
   if(url.pathname.startsWith("/v1/")&&!principal)return;
+  if(config.environment==="production"&&principal?.mode==="session"&&appRuntime.userId&&principal.identity?.sub!==appRuntime.userId){
+   return json(res,403,{error:"user_scope_mismatch"});
+  }
 
   if(req.method==="GET"&&url.pathname==="/v1/status"){
    const vault=appRuntime.credentialVault;
