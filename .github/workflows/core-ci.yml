@@ -76,3 +76,11 @@ jobs:
       - name: Compile Android debug app
         working-directory: clients/android
         run: gradle :app:assembleDebug --no-daemon
+
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build production container
+        run: docker build -f deploy/Dockerfile -t nikky-ci .
