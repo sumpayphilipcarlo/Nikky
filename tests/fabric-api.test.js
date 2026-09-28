@@ -6,9 +6,9 @@ const {createRuntime}=require("../server/runtime.js");
 const {createServer}=require("../server/index.js");
 
 (async()=>{
- const fabricExecutions=[];
+ const fabricExecutions=[];let professionalHelpCalls=0;
  const runtime=createRuntime({providers:{
-   requestProfessionalHelp:async()=>({ok:true,live:true,channel:"test-monitoring"}),
+   requestProfessionalHelp:async()=>{professionalHelpCalls++;return {ok:true,live:true,channel:"test-monitoring"}},
    fabricExecutors:{
      intent:async({endpoint,capability,payload})=>{fabricExecutions.push({endpoint:endpoint.id,capability,payload});return {ok:true,live:true,bookingId:"ride-1"}}
    }
@@ -69,8 +69,19 @@ const {createServer}=require("../server/index.js");
 
  await fetch(base+"/v1/sensors",{method:"POST",headers,body:JSON.stringify({sourceId:"smoke",signal:"smoke",confidence:.95,at:Date.now()})});
  await fetch(base+"/v1/sensors",{method:"POST",headers,body:JSON.stringify({sourceId:"heat",signal:"heat",confidence:.95,at:Date.now()})});
- res=await fetch(base+"/v1/guardian/incidents",{method:"POST",headers,body:JSON.stringify({type:"fire",signals:["smoke","heat"],policy:{minSources:2,minConfidence:.8,allowProfessionalHelpWhenUnresponsive:true,trustedContacts:[]},location:"home"})});
+ res=await fetch(base+"/v1/guardian/incidents",{method:"POST",headers,body:JSON.stringify({type:"fire",signals:["smoke","heat"],policy:{minSources:1,minConfidence:.5,allowProfessionalHelpWhenUnresponsive:true},location:"home"})});
  assert.equal(res.status,201);body=await res.json();assert.equal(body.level,"urgent");
+ const unconfiguredIncidentId=body.id;
+ res=await fetch(base+"/v1/guardian/incidents/"+encodeURIComponent(unconfiguredIncidentId)+"/escalate",{method:"POST",headers,body:JSON.stringify({responsive:false})});
+ assert.equal(res.status,200);assert.equal(professionalHelpCalls,0);
+
+ // Only a separately configured Guardian policy may enable unattended professional-help escalation.
+ res=await fetch(base+"/v1/guardian/policies",{method:"POST",headers,body:JSON.stringify({id:"fire-home",type:"fire",minSources:2,minConfidence:.8,allowProfessionalHelpWhenUnresponsive:true,trustedContacts:[]})});
+ assert.equal(res.status,201);
+ res=await fetch(base+"/v1/guardian/incidents",{method:"POST",headers,body:JSON.stringify({type:"fire",signals:["smoke","heat"],location:"home"})});
+ assert.equal(res.status,201);body=await res.json();
+ res=await fetch(base+"/v1/guardian/incidents/"+encodeURIComponent(body.id)+"/escalate",{method:"POST",headers,body:JSON.stringify({responsive:false})});
+ assert.equal(res.status,200);assert.equal(professionalHelpCalls,1);
 
  res=await fetch(base+"/v1/status",{headers});
  assert.equal(res.status,200);body=await res.json();
