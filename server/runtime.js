@@ -175,6 +175,19 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
    else if(result.status==="execution_failed"||result.status==="approved_no_executor")Workflow.transition(wf,Workflow.STATES.FAILED,result.status);
   }
   if(wf)await persistWorkflow(wf);
+  if(result.status==="executed"&&item?.action?.meta?.missionId&&item?.action?.meta?.missionStepId){
+   const missionId=item.action.meta.missionId,stepId=item.action.meta.missionStepId;
+   try{
+    missionPlanner.completeStep(missionId,stepId,result);
+    const mission=missionPlanner.get(missionId);
+    if(mission&&mission.state!=="completed"){
+     missionPlanner.transition(missionId,"running",{waitingFor:null,approvalId:null});
+     await missionRunner.run(missionId);
+    }
+   }catch(error){
+    auditLedger.append({actor:"nikky-core",actionType:"mission.advance",decision:"failed",metadata:{missionId,stepId,error:error.message}});
+   }
+  }
   auditLedger.append({actor:"user",actionType:item?.action?.type||"unknown",decision:"approved",metadata:{approvalId:id}});
   recordAction(metrics,{decision:"approved",status:result.status});
   return result;
