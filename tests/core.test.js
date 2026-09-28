@@ -714,20 +714,20 @@ const GoogleCalendar=require("../google-calendar.js");
   assert.equal(listedProviders[0].provider,"google");
   assert.equal(JSON.stringify(listedProviders).includes("super-secret"),false);
 
-  let detected=null,started=false,stopped=false;
+  let wakeDetection=null,wakeStarted=false,wakeStopped=false;
   const wake=createWakeWordController({
     permissionCheck:async()=>true,
     engine:{
-      start:async cb=>{started=true;await cb({phrase:"hey nikky",confidence:0.94})},
-      stop:async()=>{stopped=true}
+      start:async cb=>{wakeStarted=true;await cb({phrase:"hey nikky",confidence:0.94})},
+      stop:async()=>{wakeStopped=true}
     },
-    onDetection:e=>{detected=e}
+    onDetection:e=>{wakeDetection=e}
   });
   assert.equal((await wake.start()).ok,true);
-  assert.equal(started,true);
-  assert.equal(detected.phrase,"hey nikky");
+  assert.equal(wakeStarted,true);
+  assert.equal(wakeDetection.phrase,"hey nikky");
   assert.equal(wake.status().running,true);
-  await wake.stop();assert.equal(stopped,true);
+  await wake.stop();assert.equal(wakeStopped,true);
 
   let clock=1000;
   const speaker=createSpeakerVerifier({
