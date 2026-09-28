@@ -16,8 +16,18 @@ async function startWorker(){
  const runtime=createRuntime({workflowRepository:repository,userId,providers});
  await runtime.restoreWorkflows();
  await runtime.restoreRuntimeState();
+ await repository.upsertJob(userId,{id:userId+":scheduler",type:"runtime.scheduler.tick",intervalMs:60000,nextRunAt:new Date()});
+ await repository.upsertJob(userId,{id:userId+":missions",type:"runtime.missions.tick",intervalMs:Number(process.env.NIKKY_MISSION_RETRY_MS||60000),nextRunAt:new Date()});
  const handlers={
   "runtime.scheduler.tick":async()=>runtime.scheduler.tick(),
+  "runtime.missions.tick":async()=>{
+   await runtime.restoreRuntimeState();
+   const waiting=runtime.missionPlanner.list().filter(m=>m.state==="waiting_external");
+   const results=[];
+   for(const mission of waiting)results.push(await runtime.missionRunner.resume(mission.id));
+   if(waiting.length)await runtime.persistRuntimeState("missions");
+   return {checked:waiting.length,results};
+  },
   "provider.health":async job=>({provider:job.payload?.provider||"unknown",status:"scheduled-check"})
  };
  const worker=createWorker({repository,handlers,pollMs:Number(process.env.NIKKY_WORKER_POLL_MS||60000)});
