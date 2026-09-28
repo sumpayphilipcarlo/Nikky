@@ -5,6 +5,8 @@ const {createPostgresPool,checkDatabase}=require("../storage/db.js");
 const {createPostgresRepository}=require("../storage/postgres.js");
 const {migrate}=require("../storage/migrate.js");
 const {buildStoredProviders}=require("./provider-bootstrap.js");
+const {createMonitor}=require("./monitoring.js");
+const {installGracefulShutdown}=require("./lifecycle.js");
 
 async function start(){
  const {config,warnings}=assertValidConfig(process.env);
@@ -17,11 +19,26 @@ async function start(){
  await repository.upsertUser({id:userId});
  const providers=await buildStoredProviders({repository,userId,keyMaterial:config.memoryKey});
  const runtime=createRuntime({workflowRepository:repository,userId,providers});
+ runtime.monitor=createMonitor();
+ runtime.readiness=async()=>{
+  try{
+   const database=await checkDatabase(pool);
+   const audit=runtime.auditLedger?.verify?.()||{ok:true};
+   return {ok:database.ok&&audit.ok,checks:{database,audit}};
+  }catch(error){
+   runtime.monitor.error("readiness_failed",error);
+   return {ok:false,checks:{database:{ok:false,error:error.message}}};
+  }
+ };
  await runtime.restoreWorkflows();
  const server=createServer({runtime,config,warnings});
- server.on("close",()=>pool.end().catch(()=>{}));
- server.listen(config.port,()=>console.log(JSON.stringify({event:"nikky_core_started",port:config.port,database:db,warnings})));
- return {server,pool,runtime};
+ server.listen(config.port,()=>runtime.monitor.info("nikky_core_started",{port:config.port,database:db,warnings}));
+ const lifecycle=installGracefulShutdown({
+  server,
+  closeables:[()=>pool.end()],
+  logger:entry=>runtime.monitor.info(entry.event,entry)
+ });
+ return {server,pool,runtime,lifecycle};
 }
 if(require.main===module)start().catch(e=>{console.error(e);process.exit(1)});
 module.exports={start};
