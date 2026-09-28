@@ -27,6 +27,7 @@ const {createTransactionSafety}=require("../core/transaction-safety.js");
 const {createSensorFusion}=require("../core/sensor-fusion.js");
 const {createGuardian}=require("../core/guardian.js");
 const {createEmergencyPolicyStore}=require("../core/emergency-policy.js");
+const {createAppController}=require("../core/app-controller.js");
 
 function payload(action){return action?.payload&&typeof action.payload==="object"?action.payload:{}}
 function field(action,name,...aliases){
@@ -91,6 +92,11 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const transactionSafety=createTransactionSafety({now});
  const sensorFusion=createSensorFusion({now});
  const emergencyPolicies=createEmergencyPolicyStore();
+ const appController=createAppController({
+   fabric,
+   executors:providers.fabricExecutors||{},
+   verify:providers.fabricVerify
+ });
  const approvals=[],audit=[];
  const credentialVault=providers.credentialVault||null;
  const gmail=providers.gmail||createGmailAdapter({tokenProvider:providers.gmailTokenProvider,fetchFn:providers.fetchFn});
@@ -106,7 +112,10 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const executor=async action=>{
   const key=action?.idempotencyKey||action?.meta?.idempotencyKey;
   if(!key)return {ok:false,live:false,reason:"idempotency key is required for external action execution"};
-  const run=await idempotency.run(key,()=>providerExecutor(action));
+  const executeOnce=()=>action?.meta?.useFabric===true
+    ? appController.execute({capability:action.type,payload:payload(action),context:{ownerId:action?.meta?.ownerId},preferredEndpointIds:action?.meta?.endpointId?[action.meta.endpointId]:[]})
+    : providerExecutor(action);
+  const run=await idempotency.run(key,executeOnce);
   if(run.pending)return {ok:false,live:false,reason:"action with this idempotency key is already executing"};
   return {...run.result,deduplicated:run.deduplicated};
  };
@@ -179,6 +188,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,missionPlanner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
+ return {memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,appController,missionPlanner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow};
 }
 module.exports={createRuntime,createActionExecutor};
