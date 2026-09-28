@@ -104,7 +104,16 @@ const Orchestrator=require("../orchestrator.js");
  await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
  const port=server.address().port;
  const base="http://127.0.0.1:"+port;
- let res=await fetch(base+"/health");
+ let res=await fetch(base+"/");
+ assert.equal(res.status,200);
+ assert.match(res.headers.get("content-type")||"",/text\/html/);
+ const homeHtml=await res.text();
+ assert.ok(homeHtml.includes("NIKKY FABRIC"));
+ res=await fetch(base+"/api-client.js");
+ assert.equal(res.status,200);
+ assert.match(res.headers.get("content-type")||"",/javascript/);
+
+ res=await fetch(base+"/health");
  assert.equal(res.status,200);
  let body=await res.json();
  assert.equal(body.ok,true);
