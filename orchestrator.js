@@ -4,6 +4,21 @@
  root.NikkyOrchestrator=api;
 })(typeof globalThis!=="undefined"?globalThis:this,function(Authority){
  if(!Authority) throw new Error("NikkyAuthority is required");
+ function redact(value,key=""){
+   if(/token|secret|password|authorization|pin|cvv/i.test(key))return "[REDACTED]";
+   if(Array.isArray(value))return value.map(v=>redact(v));
+   if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,redact(v,k)]));
+   return value;
+ }
+ function previewAction(action={}){
+   return {
+     type:action.type||"unknown",
+     title:action.title||action.type||"Action",
+     summary:action.summary||"",
+     payload:redact(action.payload||{}),
+     meta:redact(action.meta||{})
+   };
+ }
  function create({approvalQueue=[],auditLog=[],executor=null,policy,now=()=>Date.now(),approvalTtlMs=15*60*1000}={}){
    function record(action,decision,detail){
      const entry=Authority.auditEntry(action,decision,detail);
@@ -26,6 +41,7 @@
          action,
          title:action.title||action.type,
          body:action.summary||verdict.reason,
+         preview:previewAction(action),
          createdAt:new Date(now()).toISOString(),
          expiresAt:new Date(now()+approvalTtlMs).toISOString(),
          status:"pending"
@@ -73,5 +89,5 @@
    }
    return {propose,approve,reject,approvalQueue,auditLog};
  }
- return {create};
+ return {create,redact,previewAction};
 });
