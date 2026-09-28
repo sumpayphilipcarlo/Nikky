@@ -1,4 +1,9 @@
 const assert=require("assert");
+const {createWakeWordController}=require("../core/wake-word.js");
+const {createSpeakerVerifier}=require("../core/speaker-verification.js");
+const {createActiveContext}=require("../core/active-context.js");
+const {createNativeBridge}=require("../core/native-bridge.js");
+
 const {createRefreshTokenProvider}=require("../providers/oauth-refresh.js");
 const {createProviderCredentialVault}=require("../core/provider-credentials.js");
 
@@ -708,6 +713,59 @@ const GoogleCalendar=require("../google-calendar.js");
   const listedProviders=await vault.list();
   assert.equal(listedProviders[0].provider,"google");
   assert.equal(JSON.stringify(listedProviders).includes("super-secret"),false);
+
+  let detected=null,started=false,stopped=false;
+  const wake=createWakeWordController({
+    permissionCheck:async()=>true,
+    engine:{
+      start:async cb=>{started=true;await cb({phrase:"hey nikky",confidence:0.94})},
+      stop:async()=>{stopped=true}
+    },
+    onDetection:e=>{detected=e}
+  });
+  assert.equal((await wake.start()).ok,true);
+  assert.equal(started,true);
+  assert.equal(detected.phrase,"hey nikky");
+  assert.equal(wake.status().running,true);
+  await wake.stop();assert.equal(stopped,true);
+
+  let clock=1000;
+  const speaker=createSpeakerVerifier({
+    threshold:0.8,now:()=>clock,
+    matcher:{
+      enroll:async()=>({ok:true,profileRef:"p1"}),
+      verify:async()=>({ok:true,confidence:0.91})
+    }
+  });
+  assert.equal((await speaker.enroll(Buffer.from("sample"))).ok,true);
+  assert.equal((await speaker.verify(Buffer.from("sample2"))).verified,true);
+  assert.equal(speaker.requireRecentFor({type:"security.privileged"}),true);
+  clock+=6*60*1000;
+  assert.equal(speaker.requireRecentFor({type:"security.privileged"}),false);
+
+  let allowed=false;
+  const active=createActiveContext({
+    permission:()=>allowed,
+    adapter:{snapshot:async()=>({ok:true,app:"Browser",windowTitle:"Nikky",url:"https://example.test",selection:"secret"})},
+    now:()=>new Date("2026-09-28T00:00:00Z")
+  });
+  assert.equal((await active.snapshot()).ok,false);
+  allowed=true;
+  const activeResult=await active.snapshot();
+  assert.equal(activeResult.ok,true);
+  const safeContext=active.sanitizeForMemory(activeResult.context);
+  assert.equal(safeContext.url,null);
+  assert.equal(safeContext.selection,null);
+
+  const bridge=createNativeBridge({
+    platform:"desktop",
+    declaredCapabilities:["notifications","active-window"],
+    transport:{invoke:async req=>({ok:true,req})}
+  });
+  assert.equal(bridge.has("active-window"),true);
+  assert.equal((await bridge.invoke("microphone","start")).ok,false);
+  assert.equal((await bridge.invoke("active-window","snapshot")).ok,true);
+  assert.ok(bridge.permissionRequirements().some(x=>x.capability==="active-window"));
 
   console.log("Nikky core tests passed");
 })().catch(err=>{console.error(err);process.exit(1)});
