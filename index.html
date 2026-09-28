@@ -177,6 +177,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
     <article class="card"><h3>Authorized endpoints</h3><div id="fabricEndpoints" class="list"></div></article>
     <article class="card"><h3>Active missions</h3><div id="fabricMissions" class="list"></div></article>
     <article class="card"><h3>Capability permissions</h3><div id="fabricPermissions" class="list"></div></article>
+    <article class="card"><h3>Authority policies</h3><div id="fabricPolicies" class="list"></div></article>
     <article class="card hero"><div class="eyebrow">AUTHORITY BOUNDARY</div><h3>Capabilities are permissioned</h3><p class="muted">Existing apps and devices can only be used through user-granted capabilities. Consequential actions still pass through Nikky Core approval, idempotency, verification and audit controls.</p></article>
   </div>
 </section>
@@ -214,7 +215,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],fabricPermissions:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],fabricPermissions:[],authorityPolicies:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -330,14 +331,15 @@ async function syncCoreState(){
  if(!coreApi)return showCoreStatus(false,"API client unavailable.");
  try{
   await coreApi.session();
-  const [ap,aud,status,fabric,permissions,missions,incidents,sensors]=await Promise.all([
-   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.permissions(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
+  const [ap,aud,status,fabric,permissions,policies,missions,incidents,sensors]=await Promise.all([
+   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.permissions(),coreApi.policies(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
   ]);
   state.approvals=Array.isArray(ap.approvals)?ap.approvals:[];
   state.audit=Array.isArray(aud.audit)?aud.audit:[];
   state.systemStatus=status||null;
   state.fabricEndpoints=Array.isArray(fabric.endpoints)?fabric.endpoints:[];
   state.fabricPermissions=Array.isArray(permissions.permissions)?permissions.permissions:[];
+  state.authorityPolicies=Array.isArray(policies.policies)?policies.policies:[];
   state.missions=Array.isArray(missions.missions)?missions.missions:[];
   state.guardianIncidents=Array.isArray(incidents.incidents)?incidents.incidents:[];
   state.guardianSensors=Array.isArray(sensors.sensors)?sensors.sensors:[];
@@ -527,6 +529,8 @@ function renderFabric(){
  q("fabricMissions").innerHTML=missions.length?missions.map(m=>`<div class="item"><strong>${esc(m.goal||m.id)}</strong><div class="muted small">${esc(m.state||"unknown")} · ${(m.steps||[]).filter(x=>x.status==="completed").length}/${(m.steps||[]).length} steps</div></div>`).join(""):'<div class="muted">No missions are active.</div>';
  const permissions=state.fabricPermissions||[];
  q("fabricPermissions").innerHTML=permissions.length?permissions.map(p=>`<div class="item"><strong>${esc(p.subjectId)} · ${esc(p.capability)}</strong><div class="muted small">${esc(p.mode||"approval")}${p.expiresAt?" · expires "+esc(p.expiresAt):""}</div></div>`).join(""):'<div class="muted">No capability permissions granted.</div>';
+ const policies=state.authorityPolicies||[];
+ q("fabricPolicies").innerHTML=policies.length?policies.map(p=>`<div class="item"><strong>${esc(p.actionType||"all actions")} · ${esc(p.effect||"approval")}</strong><div class="muted small">${esc(p.id)}${p.deviceId?" · endpoint "+esc(p.deviceId):""}${p.recipient?" · recipient "+esc(p.recipient):""}${p.maxRisk!=null?" · max risk "+esc(p.maxRisk):""}</div></div>`).join(""):'<div class="muted">No custom authority policies. Default review rules apply.</div>';
 }
 function renderGuardian(){
  if(!q("guardianIncidents"))return;
