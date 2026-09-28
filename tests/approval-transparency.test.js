@@ -1,9 +1,9 @@
 const assert=require("assert");
-const Orchestrator=require("../orchestrator.js");
 const Authority=require("../authority.js");
+global.NikkyAuthority=Authority;
+const Orchestrator=require("../orchestrator.js");
 
 (async()=>{
- global.NikkyAuthority=Authority;
  const queue=[],audit=[];
  const o=Orchestrator.create({approvalQueue:queue,auditLog:audit});
  const proposed=await o.propose({
