@@ -1,5 +1,5 @@
 const LEVELS=Object.freeze({LOW:"low",MEDIUM:"medium",HIGH:"high",CRITICAL:"critical"});
-const HIGH_RISK_PREFIXES=["financial.","legal.","employment.","security.privileged","data.delete","account."];
+const HIGH_RISK_PREFIXES=["financial.","payment.","bill.","purchase.","legal.","employment.","security.privileged","data.delete","account."];
 const MEDIUM_TYPES=new Set(["email.send","sms.send","call.place","calendar.create","calendar.update","calendar.delete","slack.send","microsoft.email.send","whatsapp.send","home.service","spotify.play"]);
 function classify(action={}){
  const type=String(action.type||"unknown");
