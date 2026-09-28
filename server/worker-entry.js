@@ -16,6 +16,7 @@ async function startWorker(){
  const runtime=createRuntime({workflowRepository:repository,userId,providers});
  await runtime.restoreWorkflows();
  await runtime.restoreRuntimeState();
+ await runtime.restoreMemories();
  await repository.upsertJob(userId,{id:userId+":scheduler",type:"runtime.scheduler.tick",intervalMs:60000,nextRunAt:new Date()});
  await repository.upsertJob(userId,{id:userId+":missions",type:"runtime.missions.tick",intervalMs:Number(process.env.NIKKY_MISSION_RETRY_MS||60000),nextRunAt:new Date()});
  const handlers={
