@@ -8,6 +8,12 @@ assert.ok(html.includes('data-view="system"'),"PWA must expose the System contro
 assert.ok(html.includes('id="systemProviders"'),"System view must expose provider state");
 assert.ok(html.includes('id="systemFabric"'),"System view must expose Fabric state");
 assert.ok(html.includes('id="systemGuardian"'),"System view must expose Guardian state");
+assert.ok(html.includes('data-view="fabric"'),"PWA must expose Fabric control surface");
+assert.ok(html.includes('data-view="guardian"'),"PWA must expose Guardian control surface");
+assert.ok(html.includes('id="fabricEndpoints"'),"Fabric view must expose endpoints");
+assert.ok(html.includes('id="fabricMissions"'),"Fabric view must expose missions");
+assert.ok(html.includes('id="guardianIncidents"'),"Guardian view must expose incidents");
+assert.ok(html.includes('id="guardianSensors"'),"Guardian view must expose sensor health");
 assert.ok(!html.includes("Prototype live"),"UI must not claim adapters are live merely because code exists");
 assert.ok(!html.includes("Live Calendar, Maps, and SMS providers are not connected yet."),"Journey copy must not use stale hardcoded provider status");
 assert.ok(html.includes('aria-label="Talk to Nikky"'),"top microphone needs an accessible name");
