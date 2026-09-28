@@ -5,10 +5,12 @@ const {createRuntime}=require("./runtime.js");
 const {securityHeaders,requestId,createRateLimiter,timingSafeEqual}=require("./security.js");
 const {createSessionAuth}=require("./auth.js");
 const {createOidcVerifier}=require("./oidc.js");
+const {createMonitor}=require("./monitoring.js");
 
 const {config,warnings}=loadConfig();
 const runtime=createRuntime();
 const limiter=createRateLimiter({windowMs:60000,max:120});
+const defaultMonitor=createMonitor();
 const sessionAuth=config.sessionSecret?createSessionAuth({
  secret:config.sessionSecret,
  secure:config.environment==="production"
@@ -68,13 +70,23 @@ function authorizeApi(req,res){
 
 async function handler(req,res,runtimeOverride=runtime){
  const appRuntime=runtimeOverride;
- securityHeaders(res);requestId(req,res);
+ const startedAt=Date.now();
+ securityHeaders(res);const reqId=requestId(req,res);
+ res.once("finish",()=>{(appRuntime.monitor||defaultMonitor).request({requestId:reqId,method:req.method,path:req.url,status:res.statusCode,durationMs:Date.now()-startedAt})});
  if(!applyCors(req,res)){return json(res,403,{error:"origin_not_allowed"})}
  if(req.method==="OPTIONS"){res.writeHead(204);return res.end()}
  const url=new URL(req.url,"http://localhost");
  try{
   if(req.method==="GET"&&url.pathname==="/health"){
    return json(res,200,{ok:true,service:"nikky-core",environment:config.environment,warnings});
+  }
+  if(req.method==="GET"&&url.pathname==="/health/live"){
+   return json(res,200,{ok:true,status:"live",service:"nikky-core"});
+  }
+  if(req.method==="GET"&&url.pathname==="/health/ready"){
+   if(typeof appRuntime.readiness!=="function")return json(res,503,{ok:false,status:"not-ready",reason:"readiness checks not configured"});
+   const ready=await appRuntime.readiness();
+   return json(res,ready?.ok?200:503,{ok:!!ready?.ok,status:ready?.ok?"ready":"not-ready",checks:ready?.checks||ready});
   }
 
   if(url.pathname==="/auth/session"){
@@ -153,6 +165,7 @@ async function handler(req,res,runtimeOverride=runtime){
   if(req.method==="POST"&&url.pathname==="/v1/jobs/tick")return json(res,200,{results:await appRuntime.scheduler.tick()});
   return json(res,404,{error:"not_found"});
  }catch(err){
+  (appRuntime.monitor||defaultMonitor).error("request_failed",err,{requestId:reqId,method:req.method,path:req.url});
   return json(res,500,{error:"internal_error",message:config.environment==="development"?err.message:undefined});
  }
 }
