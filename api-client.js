@@ -18,6 +18,7 @@
   }
   return {
    health:()=>request("/health"),
+   authConfig:()=>request("/auth/config"),
    session:()=>request("/auth/session"),
    login:idToken=>request("/auth/session",{method:"POST",body:{idToken}}),
    devLogin:devUserId=>request("/auth/session",{method:"POST",body:{devUserId}}),
