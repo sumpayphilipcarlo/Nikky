@@ -16,6 +16,7 @@ assert.ok(html.includes('data-view="guardian"'),"PWA must expose Guardian contro
 assert.ok(html.includes('id="fabricEndpoints"'),"Fabric view must expose endpoints");
 assert.ok(html.includes('id="fabricMissions"'),"Fabric view must expose missions");
 assert.ok(html.includes('id="fabricPermissions"'),"Fabric view must expose capability permissions");
+assert.ok(html.includes('id="fabricPolicies"'),"Fabric view must expose durable authority policies");
 assert.ok(html.includes("approvalPreview"),"Approval Center must render consequential-action previews");
 assert.ok(html.includes('id="guardianIncidents"'),"Guardian view must expose incidents");
 assert.ok(html.includes('id="guardianSensors"'),"Guardian view must expose sensor health");
