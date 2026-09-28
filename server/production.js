@@ -31,6 +31,7 @@ async function start(){
   }
  };
  await runtime.restoreWorkflows();
+ await runtime.restoreRuntimeState();
  const server=createServer({runtime,config,warnings});
  server.listen(config.port,()=>runtime.monitor.info("nikky_core_started",{port:config.port,database:db,warnings}));
  const lifecycle=installGracefulShutdown({
