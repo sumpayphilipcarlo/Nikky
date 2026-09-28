@@ -24,7 +24,16 @@ const {createServer}=require("../server/index.js");
 
   const restored=createRuntime({workflowRepository:repo,userId:"ci-user"});
   await restored.restoreWorkflows();
+  await restored.restoreRuntimeState();
   assert.ok(restored.workflows.has(proposal.workflow.id));
+  assert.ok(restored.approvals.some(a=>a.id===proposal.result.item.id));
+  assert.equal(restored.auditLedger.verify().ok,true);
+
+  const executed=await runtime.approve(proposal.result.item.id);
+  assert.equal(executed.status,"executed");
+  assert.equal(runtime.idempotency.has("pg-ci-sms"),true);
+  const pendingAfterRestart=await runtime.propose({type:"sms.send",title:"Pending after restart",to:"+15550000001",body:"pending",idempotencyKey:"pg-ci-pending"});
+  assert.equal(pendingAfterRestart.result.status,"approval_required");
 
   runtime.fabric.register({id:"ci-phone",kind:"device",trusted:true,capabilities:["ride.book"],methods:["intent"]});
   runtime.capabilityPermissions.grant({subjectId:"ci-phone",capability:"ride.book",mode:"approval"});
@@ -44,6 +53,10 @@ const {createServer}=require("../server/index.js");
   assert.equal(restoredState.sensorFusion.snapshot().length,1);
   assert.ok(restoredState.emergencyPolicies.list().some(p=>p.id==="ci-fire"));
   assert.equal(restoredState.guardian.list().length,1);
+  assert.equal(restoredState.idempotency.has("pg-ci-sms"),true);
+  assert.ok(restoredState.approvals.some(a=>a.id===pendingAfterRestart.result.item.id));
+  assert.equal(restoredState.auditLedger.verify().ok,true);
+  assert.ok(restoredState.auditLedger.verify().count>=2);
 
   await repo.saveMemory("ci-user",{id:"mem-ci",type:"preference",encryptedValue:{ciphertext:"test"},source:"ci",sensitivity:"normal"});
   const mem=await pool.query("SELECT id,type FROM memories WHERE id=$1",["mem-ci"]);
