@@ -3,6 +3,7 @@ const {createMonitor}=require("../server/monitoring.js");
 const {installGracefulShutdown}=require("../server/lifecycle.js");
 const {parseDatabaseUrl,backupPostgres,restorePostgres}=require("../storage/backup.js");
 const {createRuntime}=require("../server/runtime.js");
+const {createPostgresPool}=require("../storage/db.js");
 const {createServer}=require("../server/index.js");
 
 (async()=>{
@@ -17,6 +18,11 @@ const {createServer}=require("../server/index.js");
  assert.equal(parsed.host,"db.example");
  assert.equal(parsed.port,"5433");
  assert.equal(parsed.password,"p@ss");
+
+ const tlsPool=createPostgresPool({connectionString:"postgres://user:pass@localhost/nikky",ssl:true,sslCa:"TEST-CA"});
+ assert.equal(tlsPool.options.ssl.rejectUnauthorized,true);
+ assert.equal(tlsPool.options.ssl.ca,"TEST-CA");
+ await tlsPool.end();
 
  const calls=[];
  const runner=async(command,args,{env})=>{calls.push({command,args,env});return {ok:true}};
