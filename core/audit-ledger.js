@@ -24,7 +24,14 @@ function createAuditLedger(){
   }
   return {ok:true,count:entries.length,head:prev};
  }
- function exportAll(){return entries.map(x=>({...x}))}
- return {append,verify,exportAll,entries};
+ function exportAll(){return entries.map(x=>JSON.parse(JSON.stringify(x)))}
+ function restore(items=[]){
+  entries.length=0;
+  for(const item of items)entries.push(JSON.parse(JSON.stringify(item)));
+  const result=verify();
+  if(!result.ok){entries.length=0;throw new Error("audit ledger restore integrity failure: "+result.reason)}
+  return result;
+ }
+ return {append,verify,exportAll,restore,entries};
 }
 module.exports={createAuditLedger,hash};
