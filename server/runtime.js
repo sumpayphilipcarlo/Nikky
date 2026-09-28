@@ -1,7 +1,7 @@
 const Authority=require("../authority.js");
 global.NikkyAuthority=Authority;
 const Orchestrator=require("../orchestrator.js");
-const {createMemoryStore}=require("../core/memory.js");
+const {createMemoryStore,seal,open}=require("../core/memory.js");
 const {createIdentityService}=require("../core/identity.js");
 const {createScheduler}=require("../core/scheduler.js");
 const {createMetrics,recordAction}=require("../core/observability.js");
@@ -136,6 +136,31 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
  const orchestrator=Orchestrator.create({approvalQueue:approvals,auditLog:audit,executor});
  const workflows=new Map();
  async function persistWorkflow(wf){if(workflowRepository?.saveWorkflow)await workflowRepository.saveWorkflow(userId,wf);return wf;}
+ async function persistMemoryRecord(record){
+  if(!workflowRepository?.saveMemory)return record;
+  const encryptedValue=await seal(record.value,env.NIKKY_MEMORY_KEY||env.NIKKY_MEMORY_KEY_MATERIAL||"");
+  await workflowRepository.saveMemory(userId,{id:record.id,type:record.type,encryptedValue,source:record.source,sensitivity:record.sensitivity,expiresAt:record.expiresAt});
+  return record;
+ }
+ async function deleteMemoryRecord(id){
+  const removed=memory.remove(id);
+  if(workflowRepository?.deleteMemory)await workflowRepository.deleteMemory(userId,id);
+  return removed;
+ }
+ async function restoreMemories(){
+  if(!workflowRepository?.listMemories)return [];
+  const rows=await workflowRepository.listMemories(userId,{limit:1000});
+  const restored=[];
+  for(const row of rows){
+   try{
+    const value=await open(row.encrypted_value,env.NIKKY_MEMORY_KEY||env.NIKKY_MEMORY_KEY_MATERIAL||"");
+    const rec=memory.put({id:row.id,type:row.type,value,source:row.source||"stored",sensitivity:row.sensitivity||"normal",retentionDays:null});
+    rec.createdAt=row.created_at||rec.createdAt;rec.updatedAt=row.updated_at||rec.updatedAt;rec.expiresAt=row.expires_at||null;
+    restored.push(rec);
+   }catch(error){auditLedger.append({actor:"nikky-core",actionType:"memory.restore",decision:"failed",metadata:{id:row.id,error:error.message}})}
+  }
+  return restored;
+ }
 
  async function propose(action){
   const risk=Risk.classify(action);
@@ -268,6 +293,6 @@ function createRuntime({now=()=>Date.now(),env=process.env,providers={},workflow
   for(const row of rows){const wf={id:row.id,type:row.type,state:row.state,context:row.context||{},steps:row.steps||[],history:row.history||[],attempt:row.attempt||0,createdAt:row.created_at||row.createdAt,updatedAt:row.updated_at||row.updatedAt};workflows.set(wf.id,wf);}
   return [...workflows.values()];
  }
- return {userId,memory,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
+ return {userId,memory,persistMemoryRecord,deleteMemoryRecord,restoreMemories,identity,scheduler,metrics,idempotency,approvals,audit,auditLedger,providerHealth,policyStore,credentialVault,fabric,capabilityPermissions,fabricPolicy,appController,discovery,goalPlanner,missionPlanner,missionRunner,transactionSafety,sensorFusion,emergencyPolicies,guardian,workflows,propose,approve,reject,restoreWorkflows,persistWorkflow,persistRuntimeState,restoreRuntimeState};
 }
 module.exports={createRuntime,createActionExecutor};
