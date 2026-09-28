@@ -14,7 +14,9 @@
     "worker": "node server/worker-entry.js",
     "migrate": "node storage/migrate.js",
     "test:native": "node tests/native-static.test.js",
-    "readiness": "node scripts/release-readiness.js"
+    "readiness": "node scripts/release-readiness.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js"
   },
   "dependencies": {
     "pg": "^8.13.1"
