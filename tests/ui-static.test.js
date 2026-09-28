@@ -8,6 +8,9 @@ assert.ok(html.includes('data-view="system"'),"PWA must expose the System contro
 assert.ok(html.includes('id="systemProviders"'),"System view must expose provider state");
 assert.ok(html.includes('id="systemFabric"'),"System view must expose Fabric state");
 assert.ok(html.includes('id="systemGuardian"'),"System view must expose Guardian state");
+assert.ok(html.includes('id="googleSignIn"'),"PWA must expose production OIDC sign-in surface");
+assert.ok(html.includes('id="signOutCore"'),"PWA must expose sign-out control");
+assert.ok(html.includes("initIdentity"),"PWA must initialize authenticated browser identity");
 assert.ok(html.includes('data-view="fabric"'),"PWA must expose Fabric control surface");
 assert.ok(html.includes('data-view="guardian"'),"PWA must expose Guardian control surface");
 assert.ok(html.includes('id="fabricEndpoints"'),"Fabric view must expose endpoints");
