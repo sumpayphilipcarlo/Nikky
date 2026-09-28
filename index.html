@@ -176,6 +176,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
   <div class="grid">
     <article class="card"><h3>Authorized endpoints</h3><div id="fabricEndpoints" class="list"></div></article>
     <article class="card"><h3>Active missions</h3><div id="fabricMissions" class="list"></div></article>
+    <article class="card"><h3>Capability permissions</h3><div id="fabricPermissions" class="list"></div></article>
     <article class="card hero"><div class="eyebrow">AUTHORITY BOUNDARY</div><h3>Capabilities are permissioned</h3><p class="muted">Existing apps and devices can only be used through user-granted capabilities. Consequential actions still pass through Nikky Core approval, idempotency, verification and audit controls.</p></article>
   </div>
 </section>
@@ -213,7 +214,7 @@ input,textarea,select{width:100%;padding:11px;border:1px solid var(--line);borde
 const q=id=>document.getElementById(id),load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
 const state={
  routine:load("nikky.routine",{arrival:"09:00",prep:45,commute:60,buffer:15,workLocation:"Office"}),
- events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
+ events:load("nikky.events",[]),notes:load("nikky.notes",[]),approvals:load("nikky.approvals",[]),audit:load("nikky.audit",[]),suggestions:load("nikky.suggestions",[]),systemStatus:null,fabricEndpoints:[],fabricPermissions:[],missions:[],guardianIncidents:[],guardianSensors:[],context:load("nikky.context",{observations:[],learned:{},lastInference:null}),calendarConfig:load("nikky.calendarConfig",{mode:"mock",clientId:""}),
  skills:load("nikky.skills",[
   {id:"weather",name:"Weather",icon:"🌦️",enabled:true,live:true},
   {id:"calendar",name:"Calendar",icon:"📅",enabled:false,live:false},
@@ -282,13 +283,14 @@ async function syncCoreState(){
  if(!coreApi)return showCoreStatus(false,"API client unavailable.");
  try{
   await coreApi.session();
-  const [ap,aud,status,fabric,missions,incidents,sensors]=await Promise.all([
-   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
+  const [ap,aud,status,fabric,permissions,missions,incidents,sensors]=await Promise.all([
+   coreApi.approvals(),coreApi.audit(),coreApi.status(),coreApi.fabric(),coreApi.permissions(),coreApi.missions(),coreApi.guardianIncidents(),coreApi.sensorHealth()
   ]);
   state.approvals=Array.isArray(ap.approvals)?ap.approvals:[];
   state.audit=Array.isArray(aud.audit)?aud.audit:[];
   state.systemStatus=status||null;
   state.fabricEndpoints=Array.isArray(fabric.endpoints)?fabric.endpoints:[];
+  state.fabricPermissions=Array.isArray(permissions.permissions)?permissions.permissions:[];
   state.missions=Array.isArray(missions.missions)?missions.missions:[];
   state.guardianIncidents=Array.isArray(incidents.incidents)?incidents.incidents:[];
   state.guardianSensors=Array.isArray(sensors.sensors)?sensors.sensors:[];
@@ -305,7 +307,26 @@ async function syncCoreState(){
  }
 }
 
-function renderApprovals(){q("ab").textContent=state.approvals.length;q("approvals").innerHTML=state.approvals.length?state.approvals.map(a=>`<div class="item"><strong>${esc(a.title)}</strong><p class="muted small">${esc(a.body)}</p><div class="row"><button class="primary" data-ok="${a.id}">Approve</button><button class="secondary" data-no="${a.id}">Reject</button></div></div>`).join(""):'<div class="card muted">Nothing needs approval.</div>';document.querySelectorAll("[data-ok]").forEach(b=>b.onclick=()=>decision(b.dataset.ok,true));document.querySelectorAll("[data-no]").forEach(b=>b.onclick=()=>decision(b.dataset.no,false))}
+function approvalPreview(a){
+ const p=a.preview?.payload||a.action?.payload||{};
+ const bits=[];
+ if(p.merchant)bits.push("Merchant: "+p.merchant);
+ if(p.biller)bits.push("Biller: "+p.biller);
+ if(p.recipient)bits.push("Recipient: "+p.recipient);
+ if(p.amount!==undefined)bits.push("Amount: "+(p.currency?p.currency+" ":"")+p.amount);
+ if(p.destination)bits.push("Destination: "+p.destination);
+ if(p.reference)bits.push("Reference: "+p.reference);
+ return bits;
+}
+function renderApprovals(){
+ q("ab").textContent=state.approvals.length;
+ q("approvals").innerHTML=state.approvals.length?state.approvals.map(a=>{
+   const preview=approvalPreview(a);
+   return `<div class="item"><strong>${esc(a.title)}</strong><p class="muted small">${esc(a.body)}</p>${preview.length?`<div class="small">${preview.map(esc).join(" · ")}</div>`:""}<div class="muted small">Type: ${esc(a.preview?.type||a.action?.type||"unknown")} · Expires: ${esc(a.expiresAt||"")}</div><div class="row"><button class="primary" data-ok="${a.id}">Approve</button><button class="secondary" data-no="${a.id}">Reject</button></div></div>`;
+ }).join(""):'<div class="card muted">Nothing needs approval.</div>';
+ document.querySelectorAll("[data-ok]").forEach(b=>b.onclick=()=>decision(b.dataset.ok,true));
+ document.querySelectorAll("[data-no]").forEach(b=>b.onclick=()=>decision(b.dataset.no,false));
+}
 async function decision(id,approved){
  if(coreConnected&&coreApi){
   try{if(approved)await coreApi.approve(id);else await coreApi.reject(id);await syncCoreState();return}catch(e){showCoreStatus(false,e.message)}
@@ -456,6 +477,8 @@ function renderFabric(){
  q("fabricEndpoints").innerHTML=endpoints.length?endpoints.map(e=>`<div class="item"><strong>${esc(e.name||e.id)}</strong><div class="muted small">${esc(e.kind||"endpoint")} · ${e.online===false?"offline":"online"} · ${e.trusted?"trusted":"approval only"}</div><div class="small">${esc((e.capabilities||[]).join(" · ")||"No capabilities reported")}</div></div>`).join(""):'<div class="muted">No authorized app/device endpoints discovered yet.</div>';
  const missions=state.missions||[];
  q("fabricMissions").innerHTML=missions.length?missions.map(m=>`<div class="item"><strong>${esc(m.goal||m.id)}</strong><div class="muted small">${esc(m.state||"unknown")} · ${(m.steps||[]).filter(x=>x.status==="completed").length}/${(m.steps||[]).length} steps</div></div>`).join(""):'<div class="muted">No missions are active.</div>';
+ const permissions=state.fabricPermissions||[];
+ q("fabricPermissions").innerHTML=permissions.length?permissions.map(p=>`<div class="item"><strong>${esc(p.subjectId)} · ${esc(p.capability)}</strong><div class="muted small">${esc(p.mode||"approval")}${p.expiresAt?" · expires "+esc(p.expiresAt):""}</div></div>`).join(""):'<div class="muted">No capability permissions granted.</div>';
 }
 function renderGuardian(){
  if(!q("guardianIncidents"))return;
